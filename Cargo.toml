@@ -12,3 +12,4 @@ tokio = "1.52.3"
 uuid = { version = "1.23.1", features = ["v4", "serde"] }
 jwt = "0.16.0"
 jsonwebtoken = "10.3.0"
+queues = "1.0.2"
