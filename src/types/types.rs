@@ -27,11 +27,11 @@ pub struct GetBalance{
 
 //Below are types that will be used in engine.
 pub struct MarkPriceData{
-    symbol : String,
-    price : u64
+    pub symbol : String,
+    pub price : u64
 }
 
 pub struct BalanceUpdateData{
-    user_id : String,
-    symbol : String
+    pub user_id : String,
+    pub symbol : String
 }

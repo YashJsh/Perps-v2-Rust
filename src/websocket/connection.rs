@@ -1,15 +1,12 @@
 use std::sync::mpsc;
-
-use actix_web::mime::JSON;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::json;
-use tokio::net::unix::pipe::Sender;
 use tokio_tungstenite::{
     connect_async,
     tungstenite::{Message, client::IntoClientRequest},
 };
+use crate::{engine::types::EngineRequest};
 
-use crate::{engine::types::EngineRequest, store::store::RequestType};
 
 pub fn connect_stream(tx: mpsc::Sender<EngineRequest>) {
     let new_thread = tokio::spawn(async {

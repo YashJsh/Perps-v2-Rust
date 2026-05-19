@@ -1,14 +1,11 @@
 use crate::{
-    engine::{create_order::create_order, types::{EngineRequest, Fill, Order, OrderBook, Position}},
-    store::store::RequestType,
+    engine::{create_order::create_order, liquidation::liquidation, types::{EngineRequest, Fill, Order, OrderBook, Position}},
 };
 use std::{
     collections::HashMap,
     sync::mpsc::{self, Receiver},
     thread,
 };
-
-
 
 pub fn run_engine(rx: Receiver<EngineRequest>) {
     let (btx, brx) = mpsc::channel();
@@ -20,10 +17,10 @@ pub fn run_engine(rx: Receiver<EngineRequest>) {
                     //According to data we have to forward it to the according thread.
                     match data.symbol.as_str() {
                         "BTC" => {
-                            btx.send(event);
+                            btx.send(event).unwrap();
                         }
                         "SOL" => {
-                            sol_tx.send(event);
+                            sol_tx.send(event).unwrap();
                         }
                         _ => {
                             println!("This symbol is not supported");
@@ -31,10 +28,30 @@ pub fn run_engine(rx: Receiver<EngineRequest>) {
                     }
                 }
                 EngineRequest::MarkPriceUpdate(data)=> {
-
+                    match data.symbol.as_str(){
+                        "BTC" => {
+                            btx.send(event).unwrap();
+                        },
+                        "SOL" => {
+                            sol_tx.send(event).unwrap();
+                        }
+                        _ => {
+                            println!("This symbol is not supported");
+                        }
+                    }
                 }
                 EngineRequest::CheckBalance(data) => {
-
+                    match data.symbol.as_str() {
+                        "BTC" => {
+                            btx.send(event).unwrap();
+                        }
+                        "SOL" => {
+                            sol_tx.send(event).unwrap();
+                        }
+                        _ => {
+                            println!("This symbol is not supported");
+                        }
+                    }  
                 } 
             }
         }
@@ -46,6 +63,7 @@ pub fn run_engine(rx: Receiver<EngineRequest>) {
         let mut orders: HashMap<String, Order> = HashMap::new();
         let mut positions: HashMap<String, Position> = HashMap::new();
         let mut fills : HashMap<String, Vec<Fill>> = HashMap::new();
+        let mut current_index_price : u64;
 
         let data = match brx.recv() {
             Ok(d) => d,
@@ -63,9 +81,10 @@ pub fn run_engine(rx: Receiver<EngineRequest>) {
 
             },
             EngineRequest::MarkPriceUpdate(data)=> {
-
+                current_index_price = data.price;
+                liquidation(current_index_price, &mut positions, &mut orders, &mut fills, &mut order_book);
             }
-            
         }
     });
 }
+
