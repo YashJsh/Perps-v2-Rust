@@ -11,12 +11,13 @@ pub struct AuthData{
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct IncomingOrder{
+    pub user_id : String,
     pub order_type : OrderType,
     pub order_side : OrderSide,
     pub symbol : String,
     pub size : u64,
-    pub price : Option<i64>,
-    pub leverage : u64,
+    pub price : Option<u64>,
+    pub leverage : u64
 }
 
 #[derive(Serialize, Deserialize)]
@@ -25,3 +26,12 @@ pub struct GetBalance{
 }
 
 //Below are types that will be used in engine.
+pub struct MarkPriceData{
+    symbol : String,
+    price : u64
+}
+
+pub struct BalanceUpdateData{
+    user_id : String,
+    symbol : String
+}

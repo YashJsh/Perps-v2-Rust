@@ -1,6 +1,6 @@
 use crate::{
-    engine::{create_order::create_order, types::{Order, OrderBook, Position}},
-    store::store::{EngineRequest, RequestType},
+    engine::{create_order::create_order, types::{EngineRequest, Fill, Order, OrderBook, Position}},
+    store::store::RequestType,
 };
 use std::{
     collections::HashMap,
@@ -8,34 +8,34 @@ use std::{
     thread,
 };
 
-pub enum EngineCommands {
-    CreateOrder,
-    CheckBalance,
-    CancelOrder,
-}
+
 
 pub fn run_engine(rx: Receiver<EngineRequest>) {
     let (btx, brx) = mpsc::channel();
     let (sol_tx, sol_rx) = mpsc::channel();
     let engine_thread = thread::spawn(move || {
-        for data in rx {
-            match data.request_type {
-                RequestType::CreateOrder => {
-                    let sym = &data.data.symbol;
+        for event in rx {
+            match &event{ 
+                EngineRequest::CreateOrder(data) => {
                     //According to data we have to forward it to the according thread.
-                    match sym.as_str() {
+                    match data.symbol.as_str() {
                         "BTC" => {
-                            btx.send(data);
+                            btx.send(event);
                         }
                         "SOL" => {
-                            sol_tx.send(data);
+                            sol_tx.send(event);
                         }
                         _ => {
                             println!("This symbol is not supported");
                         }
                     }
                 }
-                RequestType::CheckBalance => {}
+                EngineRequest::MarkPriceUpdate(data)=> {
+
+                }
+                EngineRequest::CheckBalance(data) => {
+
+                } 
             }
         }
     });
@@ -43,8 +43,9 @@ pub fn run_engine(rx: Receiver<EngineRequest>) {
     //BTC_Thread
     let Btc_thread = thread::spawn(move || {
         let mut order_book: HashMap<u64, OrderBook> = HashMap::new();
-        let mut orders: HashMap<u64, Order> = HashMap::new();
-        let mut positions: Vec<Position> = Vec::new();
+        let mut orders: HashMap<String, Order> = HashMap::new();
+        let mut positions: HashMap<String, Position> = HashMap::new();
+        let mut fills : HashMap<String, Vec<Fill>> = HashMap::new();
 
         let data = match brx.recv() {
             Ok(d) => d,
@@ -54,13 +55,17 @@ pub fn run_engine(rx: Receiver<EngineRequest>) {
             }
         };
 
-        match data.request_type{
-            RequestType::CreateOrder => {
-                create_order(data.data, &mut orders, &mut order_book, &mut positions);
+        match data{
+            EngineRequest::CreateOrder(data) => {
+                create_order(data, &mut orders, &mut order_book, &mut positions, &mut fills);
             },
-            RequestType::CheckBalance => {
-                //Function for Checking balance
+            EngineRequest::CheckBalance(data) => {
+
+            },
+            EngineRequest::MarkPriceUpdate(data)=> {
+
             }
+            
         }
     });
 }

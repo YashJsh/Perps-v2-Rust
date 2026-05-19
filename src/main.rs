@@ -5,18 +5,21 @@ mod types;
 mod store;
 mod utils;
 mod engine;
+mod websocket;
 
 use actix_web::{self, App, HttpServer, web};
 
 use controllers::auth::{sign_in, sign_up};
-use queues::Queue;
 
-use crate::{engine::engine::run_engine, store::store::{AppState, EngineRequest}};
+use crate::{engine::engine::run_engine, store::store::{AppState}, websocket::connection::connect_stream};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let (tx,rx) = mpsc::channel();
-    run_engine(rx);
+    let tx1 = tx.clone();
+    connect_stream(tx1);
+    // run_engine(rx); //This runs the engine.
+    
     
     println!("Server is starting ");
     let _ = HttpServer::new(move|| {
