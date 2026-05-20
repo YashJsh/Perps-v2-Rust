@@ -2,9 +2,9 @@ use std::sync::mpsc::Sender;
 use std::{collections::HashMap, sync::Mutex};
 use queues::*;
 
-use crate::engine::types::EngineRequest;
+use crate::engine::types::{ EngineRequest};
 use crate::utils::user::User;
-use crate::types::types::{IncomingOrder, GetBalance};
+use crate::types::types::{Balances, GetBalance, IncomingOrder};
 
 #[derive(Clone)]
 pub enum RequestType{
@@ -21,5 +21,6 @@ pub enum DataTypes{
 
 pub struct AppState{
     pub users : Mutex<HashMap<String, User>>,
-    pub sender : Sender<EngineRequest>
+    pub balances : Mutex<HashMap<String, Balances>>,
+    pub sender : Sender<EngineRequest>,
 }

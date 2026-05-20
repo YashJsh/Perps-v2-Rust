@@ -14,12 +14,7 @@ pub enum OrderSide{
     Sell
 }
 
-pub struct Balances{
-    pub user_id : String,
-    pub available : u64,
-    pub locked : u64,
-    pub symbol : String,
-}
+
 
 pub struct Order{
     pub user_id : String,

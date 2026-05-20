@@ -20,6 +20,12 @@ pub struct IncomingOrder{
     pub leverage : u64
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct OnRamp{
+    pub user_id : String,
+    pub amount : u64,
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct GetBalance{
     pub user_id : Uuid,
@@ -34,4 +40,11 @@ pub struct MarkPriceData{
 pub struct BalanceUpdateData{
     pub user_id : String,
     pub symbol : String
+}
+
+#[derive(serde::Serialize, Deserialize, Clone)]
+pub struct Balances{
+    pub available : u64,
+    pub locked : u64,
+    pub currency : String
 }

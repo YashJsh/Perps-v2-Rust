@@ -7,11 +7,11 @@ mod utils;
 mod engine;
 mod websocket;
 
-use actix_web::{self, App, HttpServer, web};
+use actix_web::{self, App, HttpServer, dev::ResourcePath, web};
 
 use controllers::auth::{sign_in, sign_up};
 
-use crate::{engine::engine::run_engine, store::store::{AppState}, websocket::connection::connect_stream};
+use crate::{controllers::exchange::on_ramp, engine::engine::run_engine, store::store::AppState, websocket::connection::connect_stream};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -28,6 +28,7 @@ async fn main() -> std::io::Result<()> {
             web::Data::new(
                 AppState{
                     users : HashMap::new().into(),
+                    balances : HashMap::new().into(),
                     sender : tx.clone()
                 }
             )
@@ -36,6 +37,10 @@ async fn main() -> std::io::Result<()> {
             web::scope("/api")
             .route("/signup", web::post().to(sign_up))
             .route("/signin", web::post().to(sign_in))
+        )
+        .service(
+            web::scope("/onramp")
+            .route("/signup", web::post().to(on_ramp))
         )
     })
     .bind(("127.0.0.1", 8080))?
