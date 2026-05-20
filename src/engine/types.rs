@@ -1,4 +1,5 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize};
+use tokio::sync::oneshot::Sender;
 
 use crate::types::types::{BalanceUpdateData, IncomingOrder, MarkPriceData};
 
@@ -13,9 +14,6 @@ pub enum OrderSide{
     Buy,
     Sell
 }
-
-
-
 pub struct Order{
     pub user_id : String,
     pub order_id : String,
@@ -69,7 +67,23 @@ pub struct OrderBook{
 
 
 pub enum EngineRequest{
-    CreateOrder(IncomingOrder),
-    MarkPriceUpdate(MarkPriceData),
+    CreateOrder{
+        order : IncomingOrder,
+        response_tx : Sender<EngineResponse>
+    },
+    MarkPriceUpdate{
+        data : MarkPriceData,
+        response_tx : Sender<EngineResponse>
+    },
     CheckBalance(BalanceUpdateData)
+}
+
+pub struct OrderResponse{
+    status : String,
+    filled_qty : u64,
+    error : Option<String>
+}
+
+pub enum EngineResponse{
+    CreateOrderResponse(OrderResponse)
 }

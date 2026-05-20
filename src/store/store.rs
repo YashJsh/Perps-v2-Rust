@@ -1,6 +1,5 @@
-use std::sync::mpsc::Sender;
 use std::{collections::HashMap, sync::Mutex};
-use queues::*;
+use tokio::sync::mpsc::Sender;
 
 use crate::engine::types::{ EngineRequest};
 use crate::utils::user::User;

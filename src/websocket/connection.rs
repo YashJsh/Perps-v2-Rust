@@ -1,14 +1,15 @@
 use std::sync::mpsc;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::json;
+use tokio::sync::mpsc::Sender;
 use tokio_tungstenite::{
     connect_async,
     tungstenite::{Message, client::IntoClientRequest},
 };
-use crate::{engine::types::EngineRequest};
+use crate::{engine::types::EngineRequest, store::store::RequestType};
 
 
-pub fn connect_stream(tx: mpsc::Sender<EngineRequest>) {
+pub fn connect_stream(tx: Sender<EngineRequest>) {
     let new_thread = tokio::spawn(async {
         let url = "wss://fstream.binance.com/market/ws";
         let client_request = url.into_client_request().expect("Wrong URL");
