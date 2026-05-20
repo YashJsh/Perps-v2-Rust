@@ -1,7 +1,7 @@
 use actix_web::{App, HttpResponse, Responder, web};
 use tokio::sync::oneshot;
 
-use crate::{engine::types::EngineRequest, store::store::AppState, types::types::{IncomingOrder, OnRamp}};
+use crate::{engine::types::{EngineRequest, EngineResponse}, store::store::AppState, types::types::{IncomingOrder, OnRamp}};
 
 pub async fn on_ramp(body: web::Json<OnRamp>, data: web::Data<AppState>) -> impl Responder {
     let input_data = body.0;
@@ -37,8 +37,20 @@ pub async fn create_order(body : web::Json<IncomingOrder>, data : web::Data<AppS
 
     drop(users);
 
-    let _ = data.sender.send(EngineRequest::CreateOrder { order: incoming_data, response_tx: tx });
-    HttpResponse::Ok().into()
+    let _ = data.sender.send(EngineRequest::CreateOrder { order: incoming_data, response_tx: tx }).await;
+
+    match rx.await{
+        Ok(data)=> {
+            match data{
+                EngineResponse::CreateOrderResponse(res) => {
+                    return HttpResponse::Ok().json(res);
+                }
+            }
+        }
+        Err(_)=> {
+            return HttpResponse::BadGateway().body("No response from engine");
+        }
+    }
 }
 
 

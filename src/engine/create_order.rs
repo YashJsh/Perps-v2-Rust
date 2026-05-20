@@ -1,11 +1,10 @@
 use std::collections::HashMap;
 
 use chrono::Local;
-use tokio::sync::oneshot::Sender;
 use uuid::Uuid;
 
 use crate::{
-    engine::types::{EngineResponse, Fill, Order, OrderBook, OrderSide, OrderType, Position, RestingOrder},
+    engine::types::{Fill, Order, OrderBook, OrderSide, OrderType, Position, RestingOrder},
     types::types::IncomingOrder,
 };
 
@@ -80,7 +79,6 @@ fn handleLimitOrder(
     let check = risk_engine(
         &positions,
         incmoing_order_signed_size,
-        &incoming_ord_side,
         &incoming_order_user_id,
     );
 
@@ -90,7 +88,7 @@ fn handleLimitOrder(
     match incoming_ord_side {
         OrderSide::Buy => {
             {
-                let fill_vec = fills.entry(order_id).or_insert(Vec::new());
+                fills.entry(order_id).or_insert(Vec::new());
             }
 
             let mut prices: Vec<u64> = book.keys().copied().collect();
@@ -292,15 +290,6 @@ fn handleLimitOrder(
     }
 }
 
-fn handleMarketOrder(
-    order_id: String,
-    book: &mut HashMap<u64, OrderBook>,
-    positions: &mut HashMap<String, Position>,
-    orders: &mut HashMap<String, Order>,
-    fills: &mut HashMap<String, Vec<Fill>>,
-) {
-}
-
 fn get_time() -> String {
     let local = Local::now();
     local.to_string()
@@ -316,9 +305,12 @@ fn add_in_bids(book: &mut HashMap<u64, OrderBook>, resting_order: RestingOrder) 
     return;
 }
 
-fn add_in_sorts(book: &mut HashMap<u64, OrderBook>, resting_order: RestingOrder){
+fn add_in_sorts(book: &mut HashMap<u64, OrderBook>, resting_order: RestingOrder) {
     let price = resting_order.price.unwrap();
-    let orderbook = book.entry(price).or_insert(OrderBook { asks: Vec::new(), bids: Vec::new() });
+    let orderbook = book.entry(price).or_insert(OrderBook {
+        asks: Vec::new(),
+        bids: Vec::new(),
+    });
     orderbook.asks.push(resting_order);
     return;
 }
@@ -393,12 +385,7 @@ fn check_positions(
     };
 }
 
-fn risk_engine(
-    positions: &HashMap<String, Position>,
-    order_size: i64,
-    order_side: &OrderSide,
-    user_id: &String,
-) -> bool {
+fn risk_engine(positions: &HashMap<String, Position>, order_size: i64, user_id: &String) -> bool {
     //Check if position exists
     //If positions exists:
     //Check if it is increasing the risk ->
@@ -421,4 +408,230 @@ fn risk_engine(
         }
     };
     output
+}
+
+fn handleMarketOrder(
+    order_id: String,
+    book: &mut HashMap<u64, OrderBook>,
+    positions: &mut HashMap<String, Position>,
+    orders: &mut HashMap<String, Order>,
+    fills: &mut HashMap<String, Vec<Fill>>,
+) {
+    let (incoming_qty, incoming_side, incoming_leverage, incoming_user_id) =
+        match orders.get(&order_id) {
+            Some(ord) => (
+                ord.size,
+                ord.order_side.clone(),
+                ord.leverage,
+                ord.user_id.clone(),
+            ),
+            None => {
+                println!("Order not found");
+                return;
+            }
+        };
+
+    let incoming_order_id = order_id.clone();
+
+    let incoming_order_signed_size = match &incoming_side {
+        OrderSide::Buy => incoming_qty as i64,
+        OrderSide::Sell => -(incoming_qty as i64),
+    };
+
+    let check = risk_engine(positions, incoming_order_signed_size, &incoming_user_id);
+
+    //Sort the book first;
+    if check {
+        //Check the balances;
+    }
+
+    match incoming_side {
+
+        OrderSide::Buy => {
+            //Sort the book prices first;
+            let mut prices: Vec<u64> = book.keys().copied().collect();
+            prices.sort();
+
+            {
+                fills.entry(order_id).or_insert(Vec::new());
+            }
+
+            let mut incoming_remaining_qty = incoming_qty;
+            for i in 0..prices.len() {
+                let price = prices[i];
+
+                let price_orders = match book.get_mut(&price) {
+                    Some(ask) => ask,
+                    None => {
+                        continue;
+                    }
+                };
+
+                if incoming_remaining_qty == 0 {
+                    println!("Order is matched fully nothing is left to match");
+                    return;
+                }
+
+                for selling_order in price_orders.asks.iter_mut() {
+                    //Sellable order is :
+                    let matching_qty =
+                        std::cmp::min(incoming_remaining_qty, selling_order.remaining_qty);
+                    let filled_data = Fill {
+                        order_id: incoming_order_id.clone(),
+                        maker_id: selling_order.order_id.clone(),
+                        taker_id: incoming_order_id.clone(),
+                        price: selling_order.price.unwrap(),
+                        qty: matching_qty,
+                        symbol: selling_order.symbol.clone(),
+                        time: get_time(),
+                    };
+
+                    //Push to fills :
+                    match fills.get_mut(&incoming_order_id) {
+                        Some(fill) => {
+                            fill.push(filled_data);
+                        }
+                        None => {
+                            //I think here i need to create a fresh one and insert it to this.
+                            let fills_id = fills.entry(incoming_order_id.clone()).or_default();
+                            fills_id.push(filled_data);
+                        }
+                    };
+
+                    //Remove the current selling order remainign qty;
+                    selling_order.remaining_qty -= matching_qty;
+                    selling_order.filled_qty += matching_qty;
+
+                    //Incoming order remaining qty is :
+                    if incoming_remaining_qty == 0 {
+                        break;
+                    }
+
+                    if selling_order.remaining_qty == 0 {
+                        //Push to the fills array
+                        match fills.get_mut(&selling_order.order_id) {
+                            Some(fill) => fill.push(Fill {
+                                order_id: selling_order.order_id.clone(),
+                                maker_id: selling_order.order_id.clone(),
+                                taker_id: incoming_order_id.clone(),
+                                price: selling_order.price.unwrap(),
+                                qty: matching_qty,
+                                symbol: selling_order.symbol.clone(),
+                                time: get_time(),
+                            }),
+                            None => {
+                                let fills_id = fills.entry(incoming_order_id.clone()).or_default();
+                                fills_id.push(Fill {
+                                    order_id: selling_order.order_id.clone(),
+                                    maker_id: selling_order.order_id.clone(),
+                                    taker_id: incoming_order_id.clone(),
+                                    price: selling_order.price.unwrap(),
+                                    qty: matching_qty,
+                                    symbol: selling_order.symbol.clone(),
+                                    time: get_time(),
+                                });
+                            }
+                        }
+                        check_positions(positions, fills, selling_order.order_id.clone(), orders);
+                    }
+
+                }
+                price_orders.asks.retain(|s| s.remaining_qty > 0);
+            }
+            check_positions(positions, fills, incoming_order_id, orders);
+        }
+
+        OrderSide::Sell => {
+            let mut prices: Vec<u64> = book.keys().copied().collect();
+            prices.sort_by(|a,b| a.cmp(b));
+
+            {
+                fills.entry(order_id).or_insert(Vec::new());
+            }
+
+            let mut incoming_remaining_qty = incoming_qty;
+            for i in 0..prices.len() {
+                let price = prices[i];
+
+                let price_orders = match book.get_mut(&price) {
+                    Some(ask) => ask,
+                    None => {
+                        continue;
+                    }
+                };
+
+                if incoming_remaining_qty == 0 {
+                    println!("Order is matched fully nothing is left to match");
+                    return;
+                }
+
+                for buying_order in price_orders.asks.iter_mut() {
+                    //Sellable order is :
+                    let matching_qty =
+                        std::cmp::min(incoming_remaining_qty, buying_order.remaining_qty);
+                    let filled_data = Fill {
+                        order_id: incoming_order_id.clone(),
+                        maker_id: buying_order.order_id.clone(),
+                        taker_id: incoming_order_id.clone(),
+                        price: buying_order.price.unwrap(),
+                        qty: matching_qty,
+                        symbol: buying_order.symbol.clone(),
+                        time: get_time(),
+                    };
+
+                    //Push to fills :
+                    match fills.get_mut(&incoming_order_id) {
+                        Some(fill) => {
+                            fill.push(filled_data);
+                        }
+                        None => {
+                            //I think here i need to create a fresh one and insert it to this.
+                            let fills_id = fills.entry(incoming_order_id.clone()).or_default();
+                            fills_id.push(filled_data);
+                        }
+                    };
+
+                    //Remove the current selling order remainign qty;
+                    buying_order.remaining_qty -= matching_qty;
+                    buying_order.filled_qty += matching_qty;
+
+                    //Incoming order remaining qty is :
+                    if incoming_remaining_qty == 0 {
+                        break;
+                    }
+
+                    if buying_order.remaining_qty == 0 {
+                        //Push to the fills array
+                        match fills.get_mut(&buying_order.order_id) {
+                            Some(fill) => fill.push(Fill {
+                                order_id: buying_order.order_id.clone(),
+                                maker_id: buying_order.order_id.clone(),
+                                taker_id: incoming_order_id.clone(),
+                                price: buying_order.price.unwrap(),
+                                qty: matching_qty,
+                                symbol: buying_order.symbol.clone(),
+                                time: get_time(),
+                            }),
+                            None => {
+                                let fills_id = fills.entry(incoming_order_id.clone()).or_default();
+                                fills_id.push(Fill {
+                                    order_id: buying_order.order_id.clone(),
+                                    maker_id: buying_order.order_id.clone(),
+                                    taker_id: incoming_order_id.clone(),
+                                    price: buying_order.price.unwrap(),
+                                    qty: matching_qty,
+                                    symbol: buying_order.symbol.clone(),
+                                    time: get_time(),
+                                });
+                            }
+                        }
+                        check_positions(positions, fills, buying_order.order_id.clone(), orders);
+                    }
+
+                }
+                price_orders.asks.retain(|s| s.remaining_qty > 0);
+            }
+            check_positions(positions, fills, incoming_order_id, orders);
+        }
+    }
 }

@@ -1,4 +1,4 @@
-use serde::{Deserialize};
+use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot::Sender;
 
 use crate::types::types::{BalanceUpdateData, IncomingOrder, MarkPriceData};
@@ -75,15 +75,19 @@ pub enum EngineRequest{
         data : MarkPriceData,
         response_tx : Sender<EngineResponse>
     },
-    CheckBalance(BalanceUpdateData)
+    CheckBalance(BalanceUpdateData),
 }
 
+
+#[derive(serde::Serialize)]
 pub struct OrderResponse{
     status : String,
     filled_qty : u64,
     error : Option<String>
 }
 
+#[derive(serde::Serialize)]
 pub enum EngineResponse{
-    CreateOrderResponse(OrderResponse)
+    CreateOrderResponse(OrderResponse),
+    
 }

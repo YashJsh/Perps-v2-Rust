@@ -42,10 +42,10 @@ pub async fn run_engine(mut rx: Receiver<EngineRequest>) {
                 }
                 EngineRequest::CheckBalance(data) => match data.symbol.as_str() {
                     "BTC" => {
-                        btx.send(event);
+                        btx.send(event).await.expect("Error in sending to the BTC_Thread");
                     }
                     "SOL" => {
-                        sol_tx.send(event);
+                        sol_tx.send(event).await.expect("Error in sending to the Sol_thread");
                     }
                     _ => {
                         println!("This symbol is not supported");
@@ -76,6 +76,7 @@ pub async fn run_engine(mut rx: Receiver<EngineRequest>) {
                     );
                 }
                 EngineRequest::CheckBalance(data) => {}
+                
                 EngineRequest::MarkPriceUpdate { data, response_tx } => {
                     current_index_price = data.price;
                     liquidation(
