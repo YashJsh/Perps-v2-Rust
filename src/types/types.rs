@@ -15,7 +15,7 @@ pub struct IncomingOrder{
     pub order_type : OrderType,
     pub order_side : OrderSide,
     pub symbol : String,
-    pub size : i64,
+    pub size : u64,
     pub price : Option<u64>,
     pub leverage : u64
 }

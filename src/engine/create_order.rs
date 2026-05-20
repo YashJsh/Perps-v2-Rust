@@ -69,12 +69,27 @@ fn handleLimitOrder(
 
     let incoming_ord_id = order_id.clone();
 
+    let incmoing_order_signed_size = match &incoming_ord_side {
+        OrderSide::Buy => incmoing_ord_size as i64,
+        OrderSide::Sell => -(incmoing_ord_size as i64),
+    };
+
     //Here risk engine will run. And according to the bool result
     //It will check or not check the collateral, balance for the new order.
-
+    let check = risk_engine(
+        &positions,
+        incmoing_order_signed_size,
+        &incoming_ord_side,
+        &incoming_order_user_id,
+    );
+    if check {
+        //Check balances margin collateral and all here.
+    }
     match incoming_ord_side {
         OrderSide::Buy => {
-            fills.insert(order_id, Vec::new());
+            {
+                let fill_vec = fills.entry(order_id).or_insert(Vec::new());
+            }
 
             let mut prices: Vec<u64> = book.keys().copied().collect();
             prices.sort();
@@ -108,14 +123,14 @@ fn handleLimitOrder(
                             time: get_time(),
                         };
                         //Add to the fills array;
+
                         match fills.get_mut(&incoming_ord_id) {
                             Some(fill) => {
                                 fill.push(filled_data);
                             }
                             None => {
                                 //I think here i need to create a fresh one and insert it to this.
-                                let fills_id =
-                                    fills.entry(incoming_ord_id.clone()).or_insert(Vec::new());
+                                let fills_id = fills.entry(incoming_ord_id.clone()).or_default();
                                 fills_id.push(filled_data);
                             }
                         };
@@ -140,7 +155,7 @@ fn handleLimitOrder(
                                 }),
                                 None => {
                                     let fills_id =
-                                        fills.entry(p.order_id.clone()).or_insert(Vec::new());
+                                        fills.entry(incoming_ord_id.clone()).or_default();
                                     fills_id.push(Fill {
                                         order_id: p.order_id.clone(),
                                         maker_id: p.order_id.clone(),
@@ -163,7 +178,7 @@ fn handleLimitOrder(
             let resting_order: RestingOrder = RestingOrder {
                 order_id: incoming_ord_id,
                 user_id: incoming_order_user_id,
-                qty: incmoing_ord_size,
+                qty: incmoing_ord_size as u64,
                 price: Some(incoming_ord_price),
                 filled_qty: incmoing_ord_size - incoming_remaining_qty,
                 remaining_qty: incoming_remaining_qty,
@@ -172,7 +187,106 @@ fn handleLimitOrder(
             add_in_bids(book, resting_order);
         }
 
-        OrderSide::Sell => {}
+        OrderSide::Sell => {
+            {
+                let fill_vec = fills.entry(order_id).or_insert(Vec::new());
+            }
+
+            let mut prices: Vec<u64> = book.keys().copied().collect();
+            prices.sort_by(|a, b| b.cmp(a));
+
+            let mut incoming_remaining_qty = incmoing_ord_size;
+
+            for i in 0..prices.len() {
+                let price = prices[i];
+                let price_orders = match book.get_mut(&price) {
+                    Some(ord) => ord,
+                    None => {
+                        continue;
+                    }
+                };
+                if incoming_remaining_qty == 0 {
+                    println!("Order is matched fully nothing is left to match");
+                    return;
+                }
+                if &price >= &incoming_ord_price {
+                    //Loop through the orders;
+                    for p in price_orders.asks.iter_mut() {
+                        let matching_qty = std::cmp::min(p.remaining_qty, incoming_remaining_qty);
+                        incoming_remaining_qty -= matching_qty;
+                        let filled_data = Fill {
+                            order_id: incoming_ord_id.clone(),
+                            maker_id: p.order_id.clone(),
+                            taker_id: incoming_ord_id.clone(),
+                            price: p.price.unwrap(),
+                            qty: matching_qty,
+                            symbol: incoming_ord_symbol.clone(),
+                            time: get_time(),
+                        };
+                        //Add to the fills array;
+
+                        match fills.get_mut(&incoming_ord_id) {
+                            Some(fill) => {
+                                fill.push(filled_data);
+                            }
+                            None => {
+                                //I think here i need to create a fresh one and insert it to this.
+                                let fills_id = fills.entry(incoming_ord_id.clone()).or_default();
+                                fills_id.push(filled_data);
+                            }
+                        };
+
+                        p.filled_qty += matching_qty;
+                        p.remaining_qty -= matching_qty;
+
+                        if incoming_remaining_qty == 0 {
+                            break;
+                        }
+
+                        if (p.remaining_qty == 0) {
+                            match fills.get_mut(&p.order_id) {
+                                Some(fill) => fill.push(Fill {
+                                    order_id: p.order_id.clone(),
+                                    maker_id: p.order_id.clone(),
+                                    taker_id: incoming_ord_id.clone(),
+                                    price: p.price.unwrap(),
+                                    qty: matching_qty,
+                                    symbol: incoming_ord_symbol.clone(),
+                                    time: get_time(),
+                                }),
+                                None => {
+                                    let fills_id =
+                                        fills.entry(incoming_ord_id.clone()).or_default();
+                                    fills_id.push(Fill {
+                                        order_id: p.order_id.clone(),
+                                        maker_id: p.order_id.clone(),
+                                        taker_id: incoming_ord_id.clone(),
+                                        price: p.price.unwrap(),
+                                        qty: matching_qty,
+                                        symbol: incoming_ord_symbol.clone(),
+                                        time: get_time(),
+                                    });
+                                }
+                            }
+                            check_positions(positions, fills, p.order_id.clone(), orders);
+                        }
+                    }
+                    price_orders.asks.retain(|order| order.remaining_qty > 0);
+                }
+            }
+            check_positions(positions, fills, incoming_ord_id.clone(), orders);
+            //Add the order in the book;
+            let resting_order: RestingOrder = RestingOrder {
+                order_id: incoming_ord_id,
+                user_id: incoming_order_user_id,
+                qty: incmoing_ord_size as u64,
+                price: Some(incoming_ord_price),
+                filled_qty: incmoing_ord_size - incoming_remaining_qty,
+                remaining_qty: incoming_remaining_qty,
+                symbol: incoming_ord_symbol,
+            };
+            add_in_sorts(book, resting_order);
+        }
     }
 }
 
@@ -197,6 +311,13 @@ fn add_in_bids(book: &mut HashMap<u64, OrderBook>, resting_order: RestingOrder) 
         bids: Vec::new(),
     });
     order_book.bids.push(resting_order);
+    return;
+}
+
+fn add_in_sorts(book: &mut HashMap<u64, OrderBook>, resting_order: RestingOrder){
+    let price = resting_order.price.unwrap();
+    let orderbook = book.entry(price).or_insert(OrderBook { asks: Vec::new(), bids: Vec::new() });
+    orderbook.asks.push(resting_order);
     return;
 }
 
@@ -270,22 +391,26 @@ fn check_positions(
     };
 }
 
-
-fn risk_engine(positions: &mut HashMap<String, Position>, order : IncomingOrder)-> bool{
-    //Check if position exists 
-    //If positions exists: 
-        //Check if it is increasing the risk -> 
-        //If yes -> return True; In this case we have to check collateral, balance and all.
-        //If no -> return False; In this case we don't have to check collateral.
-    //If no : 
-        //Check then simple return false;
+fn risk_engine(
+    positions: &HashMap<String, Position>,
+    order_size: i64,
+    order_side: &OrderSide,
+    user_id: &String,
+) -> bool {
+    //Check if position exists
+    //If positions exists:
+    //Check if it is increasing the risk ->
+    //If yes -> return True; In this case we have to check collateral, balance and all.
+    //If no -> return False; In this case we don't have to check collateral.
+    //If no :
+    //Check then simple return false;
     let mut output = false;
-    match positions.get(&order.user_id){
+    match positions.get(user_id) {
         Some(pos) => {
-            let risk =  order.size + pos.size;
+            let risk = order_size + pos.size;
             if risk.abs() < pos.size.abs() {
                 output = false;
-            }else{
+            } else {
                 output = true;
             }
         }
@@ -295,4 +420,3 @@ fn risk_engine(positions: &mut HashMap<String, Position>, order : IncomingOrder)
     };
     output
 }
-

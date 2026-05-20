@@ -28,7 +28,7 @@ pub fn liquidation(
                     order_side : side,
                     order_type : OrderType::Market,
                     price : None,
-                    size : position.size,
+                    size : position.size as u64,
                     symbol : position.symbol.clone()
                 }
             );
