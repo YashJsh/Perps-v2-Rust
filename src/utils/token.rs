@@ -7,11 +7,11 @@ use serde::{Serialize, Deserialize};
 
 #[derive(Serialize)]
 pub struct Data{
-    userId : Uuid,
+    userId : String,
     sub : usize
 }
 
-pub fn create_token(user_id : Uuid)-> String{
+pub fn create_token(user_id : String)-> String{
     let key = env::var("JWT_SECRET").expect("JWT secret missing");
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)

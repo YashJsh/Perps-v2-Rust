@@ -11,7 +11,7 @@ use actix_web::{self, App, HttpServer, dev::ResourcePath, web};
 
 use controllers::auth::{sign_in, sign_up};
 
-use crate::{controllers::exchange::on_ramp, engine::engine::run_engine, store::store::AppState, websocket::connection::connect_stream};
+use crate::{controllers::exchange::{create_order, on_ramp}, engine::engine::run_engine, store::store::AppState, websocket::connection::connect_stream};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -40,7 +40,11 @@ async fn main() -> std::io::Result<()> {
         )
         .service(
             web::scope("/onramp")
-            .route("/signup", web::post().to(on_ramp))
+            .route("/", web::post().to(on_ramp))
+        )
+        .service(
+            web::scope("/order")
+            .route("/", web::post().to(create_order))
         )
     })
     .bind(("127.0.0.1", 8080))?

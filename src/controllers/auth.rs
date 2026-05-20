@@ -15,7 +15,7 @@ pub async fn sign_up(body : web::Json<AuthData>, data : web::Data<AppState>)-> i
         None => {
             let key = user.username.clone();
             let new_user = User{
-                id : Uuid::new_v4(),
+                id : Uuid::new_v4().to_string(),
                 username : user.username,
                 password : user.password
             };
@@ -32,7 +32,7 @@ pub async fn sign_in(body : web::Json<AuthData>, data : web::Data<AppState>)-> i
     match users.get(&user.username){
         Some(u) => {
             if u.password.eq(&user.password){
-                return HttpResponse::Ok().body(create_token(u.id));
+                return HttpResponse::Ok().body(create_token(u.id.clone()));
             }else{
                 return HttpResponse::Unauthorized().body("Incorrect Password");
             }
