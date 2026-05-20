@@ -23,7 +23,7 @@ pub fn create_order(
         order_type: data.order_type,
         order_side: data.order_side,
         symbol: data.symbol,
-        size: data.size,
+        size: data.size as u64,
         price: data.price,
         leverage: data.leverage,
     };
@@ -31,8 +31,7 @@ pub fn create_order(
 
     match order_type {
         OrderType::Market => {
-            // handleMarketOrder(order_id, book, positions, orders);
-            // If resting order.userId matches order.userId is iqual to our
+            handleMarketOrder(order_id, book, positions, orders, fills);
         }
         OrderType::Limit => {
             handleLimitOrder(order_id, book, positions, orders, fills);
@@ -69,6 +68,9 @@ fn handleLimitOrder(
     };
 
     let incoming_ord_id = order_id.clone();
+
+    //Here risk engine will run. And according to the bool result
+    //It will check or not check the collateral, balance for the new order.
 
     match incoming_ord_side {
         OrderSide::Buy => {
@@ -156,7 +158,7 @@ fn handleLimitOrder(
                     price_orders.asks.retain(|order| order.remaining_qty > 0);
                 }
             }
-            check_positions(positions,  fills, incoming_ord_id.clone(), orders);
+            check_positions(positions, fills, incoming_ord_id.clone(), orders);
             //Add the order in the book;
             let resting_order: RestingOrder = RestingOrder {
                 order_id: incoming_ord_id,
@@ -175,10 +177,11 @@ fn handleLimitOrder(
 }
 
 fn handleMarketOrder(
-    order_id: &String,
+    order_id: String,
     book: &mut HashMap<u64, OrderBook>,
     positions: &mut HashMap<String, Position>,
-    orders: &mut HashMap<u64, Order>,
+    orders: &mut HashMap<String, Order>,
+    fills: &mut HashMap<String, Vec<Fill>>,
 ) {
 }
 
@@ -266,3 +269,30 @@ fn check_positions(
         }
     };
 }
+
+
+fn risk_engine(positions: &mut HashMap<String, Position>, order : IncomingOrder)-> bool{
+    //Check if position exists 
+    //If positions exists: 
+        //Check if it is increasing the risk -> 
+        //If yes -> return True; In this case we have to check collateral, balance and all.
+        //If no -> return False; In this case we don't have to check collateral.
+    //If no : 
+        //Check then simple return false;
+    let mut output = false;
+    match positions.get(&order.user_id){
+        Some(pos) => {
+            let risk =  order.size + pos.size;
+            if risk.abs() < pos.size.abs() {
+                output = false;
+            }else{
+                output = true;
+            }
+        }
+        None => {
+            output = false;
+        }
+    };
+    output
+}
+

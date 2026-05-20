@@ -16,9 +16,9 @@ pub fn liquidation(
     for (user_id, position) in positions.iter() {
         let mut side : OrderSide;
         if position.size <= 0{
-            side = OrderSide::Buy;
-        }else {
             side = OrderSide::Sell;
+        }else {
+            side = OrderSide::Buy;
         }
         if should_liquidate(position, index_price) {
             liquid_orders.push(
@@ -28,7 +28,7 @@ pub fn liquidation(
                     order_side : side,
                     order_type : OrderType::Market,
                     price : None,
-                    size : position.size as u64,
+                    size : position.size,
                     symbol : position.symbol.clone()
                 }
             );
