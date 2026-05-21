@@ -1,7 +1,11 @@
 use actix_web::{App, HttpResponse, Responder, web};
 use tokio::sync::oneshot;
 
-use crate::{engine::types::{EngineRequest, EngineResponse}, store::store::AppState, types::types::{IncomingOrder, OnRamp}};
+use crate::{
+    engine::types::{EngineRequest, EngineResponse},
+    store::store::AppState,
+    types::types::{DeleteOrderData, IncomingOrder, OnRamp},
+};
 
 pub async fn on_ramp(body: web::Json<OnRamp>, data: web::Data<AppState>) -> impl Responder {
     let input_data = body.0;
@@ -16,13 +20,16 @@ pub async fn on_ramp(body: web::Json<OnRamp>, data: web::Data<AppState>) -> impl
         .or_insert(crate::types::types::Balances {
             available: 0,
             locked: 0,
-            currency : String::from("USD"),
+            currency: String::from("USD"),
         });
     bal.available += amount;
     HttpResponse::Ok().body("Balance updated successfully")
 }
 
-pub async fn create_order(body : web::Json<IncomingOrder>, data : web::Data<AppState>) -> impl Responder{
+pub async fn create_order(
+    body: web::Json<IncomingOrder>,
+    data: web::Data<AppState>,
+) -> impl Responder {
     let (tx, rx) = oneshot::channel();
     let incoming_data = body.0;
     let users = data.users.lock().expect("Error in getting lock on usres");
@@ -30,27 +37,53 @@ pub async fn create_order(body : web::Json<IncomingOrder>, data : web::Data<AppS
     match users.get(&incoming_data.user_id) {
         Some(_) => {}
         None => {
-            return HttpResponse::BadRequest()
-                .body("User does not exist");
+            return HttpResponse::BadRequest().body("User does not exist");
         }
     };
 
     drop(users);
 
-    let _ = data.sender.send(EngineRequest::CreateOrder { order: incoming_data, response_tx: tx }).await;
+    let _ = data
+        .sender
+        .send(EngineRequest::CreateOrder {
+            order: incoming_data,
+            response_tx: tx,
+        })
+        .await;
 
-    match rx.await{
-        Ok(data)=> {
-            match data{
-                EngineResponse::CreateOrderResponse(res) => {
-                    return HttpResponse::Ok().json(res);
-                }
+    match rx.await {
+        Ok(data) => match data {
+            EngineResponse::CreateOrderResponse(res) => {
+                return HttpResponse::Ok().json(res);
             }
-        }
-        Err(_)=> {
+            _ => HttpResponse::InternalServerError().body("Invalid response type"),
+        },
+        Err(_) => {
             return HttpResponse::BadGateway().body("No response from engine");
         }
     }
 }
 
+pub async fn delete_order(
+    body: web::Json<DeleteOrderData>,
+    data: web::Data<AppState>,
+) -> impl Responder {
+    let (tx, rx) = oneshot::channel();
 
+    let _ = data
+        .sender
+        .send(EngineRequest::DeleteOrderData { data: body.0, response_tx: tx })
+        .await;
+
+    match rx.await {
+        Ok(data) => match data {
+            EngineResponse::CreateOrderResponse(res) => {
+                return HttpResponse::Ok().json(res);
+            }
+            _ => HttpResponse::InternalServerError().body("Invalid response type"),
+        },
+        Err(_) => {
+            return HttpResponse::BadGateway().body("No response from engine");
+        }
+    }
+}

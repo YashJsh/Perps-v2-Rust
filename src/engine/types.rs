@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot::Sender;
 
-use crate::types::types::{BalanceUpdateData, IncomingOrder, MarkPriceData};
+use crate::types::types::{BalanceUpdateData, DeleteOrderData, IncomingOrder, MarkPriceData};
 
 #[derive(serde::Serialize, Deserialize, Clone)]
 pub enum OrderType{
@@ -14,6 +14,15 @@ pub enum OrderSide{
     Buy,
     Sell
 }
+
+#[derive(serde::Serialize, Deserialize, Clone)]
+pub enum OrderStatus{
+    Filled,
+    PartiallyFilled,
+    Cancelled,
+    Open
+}
+
 pub struct Order{
     pub user_id : String,
     pub order_id : String,
@@ -23,6 +32,7 @@ pub struct Order{
     pub size : u64,
     pub price : Option<u64>,
     pub leverage : u64,
+    pub status : OrderStatus
 }
 
 #[derive(Clone)]
@@ -65,7 +75,6 @@ pub struct OrderBook{
     pub bids : Vec<RestingOrder>
 }
 
-
 pub enum EngineRequest{
     CreateOrder{
         order : IncomingOrder,
@@ -76,8 +85,11 @@ pub enum EngineRequest{
         response_tx : Sender<EngineResponse>
     },
     CheckBalance(BalanceUpdateData),
+    DeleteOrderData{
+        data : DeleteOrderData,
+        response_tx : Sender<EngineResponse>
+    }
 }
-
 
 #[derive(serde::Serialize)]
 pub struct OrderResponse{
@@ -87,7 +99,13 @@ pub struct OrderResponse{
 }
 
 #[derive(serde::Serialize)]
+pub struct DeleteOrderRes{
+    pub status : bool,
+    pub error : Option<String>,
+}
+
+#[derive(serde::Serialize)]
 pub enum EngineResponse{
     CreateOrderResponse(OrderResponse),
-    
+    DeleteOrderResponse(DeleteOrderRes)
 }

@@ -1,9 +1,7 @@
 use tokio::sync::mpsc::{self, Receiver};
 
 use crate::engine::{
-    create_order::create_order,
-    liquidation::liquidation,
-    types::{EngineRequest, Fill, Order, OrderBook, Position},
+    create_order::create_order, delete_order::delete_order_func, liquidation::liquidation, types::{EngineRequest, Fill, Order, OrderBook, Position}
 };
 use std::collections::HashMap;
 
@@ -51,6 +49,19 @@ pub async fn run_engine(mut rx: Receiver<EngineRequest>) {
                         println!("This symbol is not supported");
                     }
                 },
+                EngineRequest::DeleteOrderData { data, response_tx }=> match data.symbol.as_str(){
+                    // let data = delete_order_func(data, &mut orders, &mut order_book);
+                    // response_tx.send(data);
+                    "BTC" => {
+                        btx.send(event).await.expect("Error in sending to the BTC_Thread");
+                    },
+                    "SOL" => {
+
+                    },
+                    _ => {
+
+                    }
+                 }
             }
         }
     });
@@ -86,6 +97,10 @@ pub async fn run_engine(mut rx: Receiver<EngineRequest>) {
                         &mut fills,
                         &mut order_book,
                     );
+                },
+                EngineRequest::DeleteOrderData { data, response_tx } => {
+                    let data = delete_order_func(data, &mut orders, &mut order_book);
+                    response_tx.send(data);
                 }
             }
         }

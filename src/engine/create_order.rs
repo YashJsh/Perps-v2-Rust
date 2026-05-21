@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-
 use chrono::Local;
 use uuid::Uuid;
 
@@ -26,6 +25,7 @@ pub fn create_order(
         size: data.size as u64,
         price: data.price,
         leverage: data.leverage,
+        status : super::types::OrderStatus::Open
     };
     orders.insert(order_id.clone(), new_order);
 

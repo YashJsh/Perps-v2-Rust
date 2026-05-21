@@ -31,6 +31,14 @@ pub struct GetBalance{
     pub user_id : Uuid,
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct DeleteOrderData{
+    pub order_id : String,
+    pub user_id : String,
+    pub symbol : String,
+}
+
+
 //Below are types that will be used in engine.
 pub struct MarkPriceData{
     pub symbol : String,
