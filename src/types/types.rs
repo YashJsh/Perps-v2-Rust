@@ -56,3 +56,11 @@ pub struct Balances{
     pub locked : u64,
     pub currency : String
 }
+
+
+#[derive(Serialize)]
+pub struct LogInResponse {
+    pub success: bool,
+    pub token: String,
+    pub user_id : String
+}

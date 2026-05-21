@@ -1,4 +1,4 @@
-use std::{collections::HashMap};
+use std::{collections::HashMap, sync::Mutex};
 
 mod controllers;
 mod types;
@@ -10,28 +10,31 @@ mod websocket;
 use actix_web::{self, App, HttpServer, dev::ResourcePath, web};
 
 use controllers::auth::{sign_in, sign_up};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc};
 
-use crate::{controllers::exchange::{create_order, on_ramp}, engine::engine::run_engine, store::store::AppState, websocket::connection::connect_stream};
+use crate::{controllers::exchange::{create_order, on_ramp}, engine::engine::run_engine, store::store::AppState};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    dotenv::dotenv().ok();
     let (tx, mut rx) = mpsc::channel(100);
     let tx1 = tx.clone();
-    connect_stream(tx1);
-    run_engine(rx); //This runs the engine.
+
+    // connect_stream(tx1);
+    run_engine(rx).await; //This runs the engine.
     
     println!("Server is starting ");
+    let app_state = web::Data::new(
+                AppState{
+                    users : Mutex::new(HashMap::new()),
+                    balances : Mutex::new(HashMap::new()),
+                    sender : tx.clone()
+                }
+            );
     let _ = HttpServer::new(move|| {
         App::new()
         .app_data(
-            web::Data::new(
-                AppState{
-                    users : HashMap::new().into(),
-                    balances : HashMap::new().into(),
-                    sender : tx.clone()
-                }
-            )
+            app_state.clone()
         )
         .service(
             web::scope("/api")
@@ -44,7 +47,7 @@ async fn main() -> std::io::Result<()> {
         )
         .service(
             web::scope("/order")
-            .route("/", web::post().to(create_order))
+            .route("/create", web::post().to(create_order))
         )
     })
     .bind(("127.0.0.1", 8080))?

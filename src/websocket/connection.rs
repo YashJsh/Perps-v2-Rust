@@ -6,13 +6,12 @@ use tokio_tungstenite::{
     connect_async,
     tungstenite::{Message, client::IntoClientRequest},
 };
-use crate::{engine::types::EngineRequest, store::store::RequestType};
+use crate::{engine::types::EngineRequest, store::store::RequestType, types::types::MarkPriceData, websocket::types::MarkPriceUpdate};
 
 
 pub fn connect_stream(tx: Sender<EngineRequest>) {
-    let new_thread = tokio::spawn(async {
+    tokio::spawn(async move{
         let url = "wss://fstream.binance.com/market/ws";
-        let client_request = url.into_client_request().expect("Wrong URL");
         println!("Connecting with the websocket server with url : {}", url);
         let (stream, response_http) = connect_async(url).await.expect("Error in connecting");
         println!("Connected to binance");
@@ -37,11 +36,12 @@ pub fn connect_stream(tx: Sender<EngineRequest>) {
         while let Some(message) = read.next().await {
             match message {
                 Ok(msg) => {
-                    println!("Message is : {}", msg.to_text().unwrap());
-                    // tx.send(EngineRequest { 
-                    //     request_type: RequestType::UpateMarkPrice, 
-                    //     data: "Hello"
-                    // })
+                    //println!("Message is : {}", msg.to_text().unwrap());
+                    tx.send(EngineRequest::MarkPriceUpdate { data: MarkPriceData{
+                        price : 10000,
+                        symbol : String::from("BTC")
+                        } 
+                    }).await.expect("Error in sending price to the engine thread");
                 }
                 Err(e) => println!("Error is : {}", e),
             }

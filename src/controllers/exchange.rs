@@ -33,13 +33,16 @@ pub async fn create_order(
     let (tx, rx) = oneshot::channel();
     let incoming_data = body.0;
     let users = data.users.lock().expect("Error in getting lock on usres");
+
+    println!("Users are : {:?}", users);
     //Checking if the user_id is matching with the user_id send;
-    match users.get(&incoming_data.user_id) {
-        Some(_) => {}
-        None => {
-            return HttpResponse::BadRequest().body("User does not exist");
-        }
-    };
+    // match users.get(&incoming_data.user_id) {
+    //     Some(_) => {}
+    //     None => {
+    //         println!("{:?}", users);
+    //         return HttpResponse::BadRequest().body("User does not exist");
+    //     }
+    // };
 
     drop(users);
 

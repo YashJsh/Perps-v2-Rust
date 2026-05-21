@@ -60,6 +60,7 @@ pub struct Fill{
     pub time : String
 }
 
+#[derive(Debug)]
 pub struct RestingOrder{
     pub order_id : String,
     pub user_id : String,
@@ -70,6 +71,7 @@ pub struct RestingOrder{
     pub symbol : String,
 }
 
+#[derive(Debug)]
 pub struct OrderBook{
     pub asks : Vec<RestingOrder>,
     pub bids : Vec<RestingOrder>
@@ -82,7 +84,6 @@ pub enum EngineRequest{
     },
     MarkPriceUpdate{
         data : MarkPriceData,
-        response_tx : Sender<EngineResponse>
     },
     CheckBalance(BalanceUpdateData),
     DeleteOrderData{

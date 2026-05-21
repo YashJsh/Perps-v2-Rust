@@ -1,4 +1,6 @@
-use std::{collections::HashMap, sync::Mutex};
+use std::sync::Mutex;
+use std::{collections::HashMap};
+
 use tokio::sync::mpsc::Sender;
 
 use crate::engine::types::{ EngineRequest};
@@ -22,4 +24,4 @@ pub struct AppState{
     pub users : Mutex<HashMap<String, User>>,
     pub balances : Mutex<HashMap<String, Balances>>,
     pub sender : Sender<EngineRequest>,
-}
+}       

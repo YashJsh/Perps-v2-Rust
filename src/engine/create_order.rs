@@ -173,7 +173,9 @@ fn handleLimitOrder(
                     price_orders.asks.retain(|order| order.remaining_qty > 0);
                 }
             }
-            check_positions(positions, fills, incoming_ord_id.clone(), orders);
+            if incoming_remaining_qty != incmoing_ord_size{
+                check_positions(positions, fills, incoming_ord_id.clone(), orders);
+            }
             //Add the order in the book;
             let resting_order: RestingOrder = RestingOrder {
                 order_id: incoming_ord_id,
@@ -243,7 +245,7 @@ fn handleLimitOrder(
                             break;
                         }
 
-                        if (p.remaining_qty == 0) {
+                        if (matching_qty > 0) {
                             match fills.get_mut(&p.order_id) {
                                 Some(fill) => fill.push(Fill {
                                     order_id: p.order_id.clone(),
@@ -274,7 +276,11 @@ fn handleLimitOrder(
                     price_orders.asks.retain(|order| order.remaining_qty > 0);
                 }
             }
-            check_positions(positions, fills, incoming_ord_id.clone(), orders);
+            
+            if incoming_remaining_qty != incmoing_ord_size{
+                println!("Checking Positions");
+                check_positions(positions, fills, incoming_ord_id.clone(), orders);
+            }
             //Add the order in the book;
             let resting_order: RestingOrder = RestingOrder {
                 order_id: incoming_ord_id,
@@ -302,6 +308,8 @@ fn add_in_bids(book: &mut HashMap<u64, OrderBook>, resting_order: RestingOrder) 
         bids: Vec::new(),
     });
     order_book.bids.push(resting_order);
+    println!("Added in orderbook ");
+    println!("Book looks like : {:?}", order_book);
     return;
 }
 
@@ -312,6 +320,8 @@ fn add_in_sorts(book: &mut HashMap<u64, OrderBook>, resting_order: RestingOrder)
         bids: Vec::new(),
     });
     orderbook.asks.push(resting_order);
+    println!("Added in orderbook ");
+    println!("Book looks like : {:?}", orderbook);
     return;
 }
 
@@ -343,6 +353,7 @@ fn check_positions(
         count += 1;
         price_and_qty += i.price * i.qty;
     }
+
 
     let average_entry_price = price_and_qty / count;
 
