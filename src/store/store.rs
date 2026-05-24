@@ -4,7 +4,7 @@ use std::sync::Mutex;
 use tokio::sync::mpsc::Sender;
 
 use crate::engine::types::EngineRequest;
-use crate::types::types::{Balances, GetBalance, IncomingOrder};
+use crate::types::types::{Balances};
 use crate::utils::user::User;
 
 #[derive(Clone)]
@@ -21,6 +21,5 @@ pub enum DataTypes {
 
 pub struct AppState {
     pub users: Mutex<HashMap<String, User>>,
-    pub balances: Mutex<HashMap<String, Balances>>,
     pub sender: Sender<EngineRequest>,
 }

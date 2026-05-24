@@ -24,7 +24,6 @@ async fn main() -> std::io::Result<()> {
     println!("Server is starting ");
     let app_state = web::Data::new(AppState {
         users: Mutex::new(HashMap::new()),
-        balances: Mutex::new(HashMap::new()),
         sender: tx.clone(),
     });
     let _ = HttpServer::new(move || {

@@ -11,18 +11,18 @@ pub async fn on_ramp(body: web::Json<OnRamp>, data: web::Data<AppState>) -> impl
     let input_data = body.0;
     let user_id = input_data.user_id;
     let amount = input_data.amount;
-    let mut balances = data
-        .balances
-        .try_lock()
-        .expect("Unable to get the balances");
-    let bal = balances
-        .entry(user_id)
-        .or_insert(crate::types::types::Balances {
-            available: 0,
-            locked: 0,
-            currency: String::from("USD"),
-        });
-    bal.available += amount;
+    // let mut balances = data
+    //     .balances
+    //     .try_lock()
+    //     .expect("Unable to get the balances");
+    // let bal = balances
+    //     .entry(user_id)
+    //     .or_insert(crate::types::types::Balances {
+    //         available: 0,
+    //         locked: 0,
+    //         currency: String::from("USD"),
+    //     });
+    // bal.available += amount;
     HttpResponse::Ok().body("Balance updated successfully")
 }
 

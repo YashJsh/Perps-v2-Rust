@@ -98,6 +98,11 @@ pub enum EngineRequest {
     GetDepth{
         symbol : String,
         response_tx : Sender<Result<DepthResponse, EngineError>>
+    },
+    UpdateBalance{
+        user_id : String,
+        amount : u64,
+        response_tx :  Sender<Result<BalanceResponse, EngineError>>
     }
 }
 
@@ -122,6 +127,12 @@ pub struct DepthResponse{
     pub success : bool,
     pub bids : HashMap<u64, u64>,
     pub asks : HashMap<u64, u64>
+}
+
+#[derive(serde::Serialize)]
+pub struct BalanceResponse{
+    pub user_id : String,
+    pub balance : u64
 }
 
 #[derive(Serialize)]
