@@ -2,9 +2,9 @@ use actix_web::{App, HttpResponse, Responder, web};
 use tokio::sync::oneshot;
 
 use crate::{
-    engine::types::{CreateOrderResponse, EngineError, EngineRequest},
+    engine::types::{CreateOrderResponse, DepthResponse, EngineError, EngineRequest},
     store::store::AppState,
-    types::types::{DeleteOrderData, IncomingOrder, OnRamp},
+    types::types::{DeleteOrderData, GetDepth, IncomingOrder, OnRamp},
 };
 
 pub async fn on_ramp(body: web::Json<OnRamp>, data: web::Data<AppState>) -> impl Responder {
@@ -46,15 +46,13 @@ pub async fn create_order(
         })
         .await;
 
-    match rx.await{
-        Ok(response)=> {
-            match response{
-                Ok(res)=> {
-                    return HttpResponse::Ok().json(res);
-                },
-                Err(err)=>{
-                    return HttpResponse::BadRequest().json(err);
-                }
+    match rx.await {
+        Ok(response) => match response {
+            Ok(res) => {
+                return HttpResponse::Ok().json(res);
+            }
+            Err(err) => {
+                return HttpResponse::BadRequest().json(err);
             }
         },
         Err(_) => {
@@ -80,11 +78,37 @@ pub async fn delete_order(
 
     match rx.await {
         Ok(data) => match data {
-            Ok(d)=>{
+            Ok(d) => {
                 return HttpResponse::Ok().json(d);
             }
-            Err(err) => HttpResponse::BadRequest().json(err)
+            Err(err) => HttpResponse::BadRequest().json(err),
         },
+        Err(_) => {
+            return HttpResponse::BadGateway().body("No response from engine");
+        }
+    }
+}
+
+pub async fn get_depth(body: web::Json<GetDepth>, data: web::Data<AppState>) -> impl Responder {
+    let (tx, rx) = oneshot::channel::<Result<DepthResponse, EngineError>>();
+    let symbol = body.symbol.clone();
+    let _ = data
+        .sender
+        .send(EngineRequest::GetDepth {
+            symbol,
+            response_tx: tx,
+        })
+        .await;
+
+    match rx.await{
+        Ok(data) => match data{
+            Ok(d) => {
+                return HttpResponse::Ok().json(d);
+            }
+            Err(err)=> {
+                return HttpResponse::BadRequest().json(err);
+            }
+        }
         Err(_) => {
             return HttpResponse::BadGateway().body("No response from engine");
         }

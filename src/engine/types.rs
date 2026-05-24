@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 
 use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot::Sender;
@@ -95,6 +95,10 @@ pub enum EngineRequest {
         data: DeleteOrderData,
         response_tx: Sender<Result<DeleteOrderRes,EngineError>>,
     },
+    GetDepth{
+        symbol : String,
+        response_tx : Sender<Result<DepthResponse, EngineError>>
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -113,11 +117,20 @@ pub struct CreateOrderResponse{
     pub order_status : OrderStatus
 }
 
+#[derive(serde::Serialize)]
+pub struct DepthResponse{
+    pub success : bool,
+    pub bids : HashMap<u64, u64>,
+    pub asks : HashMap<u64, u64>
+}
+
 #[derive(Serialize)]
 pub enum EngineError{
     InvalidPrice,
     InsufficientBalance,
     OrderNotFound,
     OrderFilledAlready,
-    OrderBookNotFound
+    OrderBookNotFound,
+    DepthError,
+    InvalidSymbol
 }

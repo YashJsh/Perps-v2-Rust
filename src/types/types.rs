@@ -63,3 +63,8 @@ pub struct LogInResponse {
     pub token: String,
     pub user_id: String,
 }
+
+#[derive(Serialize, Deserialize)]
+pub struct GetDepth{
+    pub symbol : String
+}

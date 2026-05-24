@@ -1,12 +1,16 @@
 use tokio::sync::mpsc::{self, Receiver};
 
 use crate::engine::{
-        create_order::create_order,
-        delete_order::delete_order_func,
-        liquidation::liquidation,
-        types::{EngineRequest, Fill, Order, OrderBook, Position},
-    };
-use std::{collections::{BTreeMap, HashMap}, hash::Hash};
+    create_order::create_order,
+    delete_order::delete_order_func,
+    liquidation::liquidation,
+    types::{EngineError, EngineRequest, Fill, Order, OrderBook, Position},
+    get_depth::get_depth
+};
+use std::{
+    collections::{BTreeMap, HashMap},
+    hash::Hash,
+};
 
 pub async fn run_engine(mut rx: Receiver<EngineRequest>) {
     let (btx, mut brx) = mpsc::channel(100);
@@ -66,18 +70,30 @@ pub async fn run_engine(mut rx: Receiver<EngineRequest>) {
                                 .expect("Error in sending to the BTC_Thread");
                         }
                         "SOL" => {}
-                        _ => {}
+                        _ => {
+                            println!("This symbol is not supported");
+                        }
                     }
                 }
+                EngineRequest::GetDepth {
+                    symbol,
+                    response_tx,
+                } => match symbol.as_str() {
+                    "BTC" => {
+                        btx.send(event).await.expect("Error in sending to btc");
+                    }
+                    "SOL" => {}
+                    _ => {}
+                },
             }
         }
     });
 
     //BTC_Thread
     let Btc_thread = tokio::spawn(async move {
-        let mut order_book = OrderBook{
-            bids : BTreeMap::new(),
-            asks : BTreeMap::new()
+        let mut order_book = OrderBook {
+            bids: BTreeMap::new(),
+            asks: BTreeMap::new(),
         };
         let mut orders: HashMap<String, Order> = HashMap::new();
         let mut positions: HashMap<String, Position> = HashMap::new();
@@ -115,13 +131,18 @@ pub async fn run_engine(mut rx: Receiver<EngineRequest>) {
                         &mut orders,
                         &mut fills,
                         &mut order_book,
-                        current_index_price
+                        current_index_price,
                     );
                 }
 
                 EngineRequest::DeleteOrderData { data, response_tx } => {
                     let data = delete_order_func(data, &mut orders, &mut order_book);
                     let _ = response_tx.send(data);
+                }
+
+                EngineRequest::GetDepth { symbol, response_tx } => {
+                    let depth = get_depth(&order_book);
+                    let _ = response_tx.send(Ok(depth));
                 }
             }
         }
