@@ -16,8 +16,9 @@ pub struct IncomingOrder {
     pub order_side: OrderSide,
     pub symbol: String,
     pub size: u64,
-    pub price: Option<u64>,
+    pub price: u64,
     pub leverage: u64,
+    pub slippage : u64
 }
 
 #[derive(Serialize, Deserialize, Clone)]

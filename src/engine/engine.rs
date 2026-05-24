@@ -6,11 +6,12 @@ use crate::engine::{
         liquidation::liquidation,
         types::{EngineRequest, Fill, Order, OrderBook, Position},
     };
-use std::collections::HashMap;
+use std::{collections::{BTreeMap, HashMap}, hash::Hash};
 
 pub async fn run_engine(mut rx: Receiver<EngineRequest>) {
     let (btx, mut brx) = mpsc::channel(100);
     let (sol_tx, sol_rx) = mpsc::channel(100);
+
     let engine_thread = tokio::spawn(async move {
         while let Some(event) = rx.recv().await {
             match &event {
@@ -74,7 +75,10 @@ pub async fn run_engine(mut rx: Receiver<EngineRequest>) {
 
     //BTC_Thread
     let Btc_thread = tokio::spawn(async move {
-        let mut order_book: HashMap<u64, OrderBook> = HashMap::new();
+        let mut order_book = OrderBook{
+            bids : BTreeMap::new(),
+            asks : BTreeMap::new()
+        };
         let mut orders: HashMap<String, Order> = HashMap::new();
         let mut positions: HashMap<String, Position> = HashMap::new();
         let mut fills: HashMap<String, Vec<Fill>> = HashMap::new();
@@ -111,6 +115,7 @@ pub async fn run_engine(mut rx: Receiver<EngineRequest>) {
                         &mut orders,
                         &mut fills,
                         &mut order_book,
+                        current_index_price
                     );
                 }
 

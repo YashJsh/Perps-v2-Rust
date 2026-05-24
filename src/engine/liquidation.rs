@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use tokio::sync::oneshot::{Receiver, Sender};
 
 use crate::{
     engine::{
@@ -14,7 +13,8 @@ pub fn liquidation(
     positions: &mut HashMap<String, Position>,
     orders: &mut HashMap<String, Order>,
     fills: &mut HashMap<String, Vec<Fill>>,
-    book: &mut HashMap<u64, OrderBook>,
+    book: &mut OrderBook,
+    market_price : u64
 ) {
     let mut liquid_orders = Vec::new();
     for (user_id, position) in positions.iter() {
@@ -30,9 +30,10 @@ pub fn liquidation(
                 leverage: position.leverage,
                 order_side: side,
                 order_type: OrderType::Market,
-                price: None,
+                price: market_price,
                 size: position.size as u64,
                 symbol: position.symbol.clone(),
+                slippage : 2
             });
         }
     }

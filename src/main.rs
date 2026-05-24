@@ -7,7 +7,7 @@ use perps_v1::{
         exchange::{create_order, on_ramp},
     },
     engine::engine::run_engine,
-    store::store::AppState,
+    store::store::AppState, websocket::connection::connect_stream,
 };
 
 use tokio::sync::mpsc;
@@ -18,8 +18,8 @@ async fn main() -> std::io::Result<()> {
     let (tx, mut rx) = mpsc::channel(100);
     let tx1 = tx.clone();
 
-    // connect_stream(tx1);
-    run_engine(rx).await; //This runs the engine.
+    connect_stream(tx1);
+    run_engine(rx).await; 
 
     println!("Server is starting ");
     let app_state = web::Data::new(AppState {

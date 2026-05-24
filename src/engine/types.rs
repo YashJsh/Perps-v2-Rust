@@ -1,3 +1,5 @@
+use std::collections::{BTreeMap, VecDeque};
+
 use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot::Sender;
 
@@ -30,9 +32,13 @@ pub struct Order {
     pub order_side: OrderSide,
     pub symbol: String,
     pub size: u64,
-    pub price: Option<u64>,
+    pub price: u64,
     pub leverage: u64,
     pub status: OrderStatus,
+    pub slippage : u64,
+    pub remaining_qty : u64,
+    pub filled_qty : u64,
+    pub created_at : String
 }
 
 #[derive(Clone)]
@@ -65,16 +71,15 @@ pub struct RestingOrder {
     pub order_id: String,
     pub user_id: String,
     pub qty: u64,
-    pub price: Option<u64>,
-    pub filled_qty: u64,
+    pub price: u64,
     pub remaining_qty: u64,
     pub symbol: String,
 }
 
 #[derive(Debug)]
 pub struct OrderBook {
-    pub asks: Vec<RestingOrder>,
-    pub bids: Vec<RestingOrder>,
+    pub bids: BTreeMap<u64, VecDeque<RestingOrder>>,
+    pub asks: BTreeMap<u64, VecDeque<RestingOrder>>,
 }
 
 pub enum EngineRequest {

@@ -1,10 +1,11 @@
 use chrono::Local;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use uuid::Uuid;
 
 use crate::{
     engine::types::{
-        CreateOrderResponse, EngineError, Fill, Order, OrderBook, OrderSide, OrderStatus, OrderType, Position, RestingOrder
+        CreateOrderResponse, EngineError, Fill, Order, OrderBook, OrderSide, OrderStatus,
+        OrderType, Position, RestingOrder,
     },
     types::types::IncomingOrder,
 };
@@ -12,7 +13,7 @@ use crate::{
 pub fn create_order(
     data: IncomingOrder,
     orders: &mut HashMap<String, Order>,
-    book: &mut HashMap<u64, OrderBook>,
+    book: &mut OrderBook,
     positions: &mut HashMap<String, Position>,
     fills: &mut HashMap<String, Vec<Fill>>,
 ) -> Result<CreateOrderResponse, EngineError> {
@@ -28,28 +29,28 @@ pub fn create_order(
         price: data.price,
         leverage: data.leverage,
         status: super::types::OrderStatus::Open,
+        slippage: data.slippage,
+        filled_qty: 0,
+        remaining_qty: data.size,
+        created_at: get_time(),
     };
     orders.insert(order_id.clone(), new_order);
     println!("Order inserted in orders with order_id : {}", order_id);
 
     match order_type {
-        OrderType::Market => {
-            handle_market_order(order_id, book, positions, orders, fills)
-        }
-        OrderType::Limit => {
-            handle_limit_order(order_id, book, positions, orders, fills)
-        }
+        OrderType::Market => handle_market_order(order_id, book, positions, orders, fills),
+        OrderType::Limit => handle_limit_order(order_id, book, positions, orders, fills),
     }
 }
 
 //What are the things i need to do for limit order;
 fn handle_limit_order(
     order_id: String,
-    book: &mut HashMap<u64, OrderBook>,
+    book: &mut OrderBook,
     positions: &mut HashMap<String, Position>,
     orders: &mut HashMap<String, Order>,
     fills: &mut HashMap<String, Vec<Fill>>,
-) -> Result<CreateOrderResponse, EngineError>{
+) -> Result<CreateOrderResponse, EngineError> {
     let (
         incoming_ord_price,
         incmoing_ord_size,
@@ -58,7 +59,7 @@ fn handle_limit_order(
         incoming_order_user_id,
     ) = match orders.get(&order_id) {
         Some(ord) => (
-            ord.price.unwrap(),
+            ord.price,
             ord.size,
             ord.symbol.clone(),
             ord.order_side.clone(),
@@ -96,89 +97,86 @@ fn handle_limit_order(
             {
                 fills.entry(order_id).or_insert(Vec::new());
             }
-
-            let mut prices: Vec<u64> = book.keys().copied().collect();
-            prices.sort();
-
             let mut incoming_remaining_qty = incmoing_ord_size;
-
-            for i in 0..prices.len() {
-                let price = prices[i];
-                let price_orders = match book.get_mut(&price) {
-                    Some(ord) => ord,
+            while incoming_remaining_qty > 0 {
+                let mut entry = match book.asks.first_entry() {
+                    Some(entry) => entry,
                     None => {
-                        continue;
+                        break;
                     }
                 };
-                if incoming_remaining_qty == 0 {
-                    println!("Order is matched fully nothing is left to match");
-                    break;
-                }
-                if &price <= &incoming_ord_price {
-                    //Loop through the orders;
-                    for p in price_orders.asks.iter_mut() {
-                        let matching_qty = std::cmp::min(p.remaining_qty, incoming_remaining_qty);
-                        incoming_remaining_qty -= matching_qty;
-                        let filled_data = Fill {
-                            order_id: incoming_ord_id.clone(),
-                            maker_id: p.order_id.clone(),
-                            taker_id: incoming_ord_id.clone(),
-                            price: p.price.unwrap(),
-                            qty: matching_qty,
-                            symbol: incoming_ord_symbol.clone(),
-                            time: get_time(),
-                        };
-                        //Add to the fills array;
+                let price = *entry.key();
+                let asks: &mut VecDeque<RestingOrder> = entry.get_mut();
 
-                        match fills.get_mut(&incoming_ord_id) {
-                            Some(fill) => {
-                                fill.push(filled_data);
+                if (price <= incoming_ord_price) {
+                    while let Some(front) = asks.front_mut() {
+                        let selling_order = front;
+
+                        let matched_qty =
+                            std::cmp::min(incoming_remaining_qty, selling_order.remaining_qty);
+
+                        let buyer_fills = fills
+                            .entry(incoming_ord_id.clone())
+                            .or_insert(Vec::new())
+                            .push(Fill {
+                                order_id: incoming_ord_id.clone(),
+                                maker_id: selling_order.order_id.clone(),
+                                taker_id: incoming_ord_id.clone(),
+                                price: selling_order.price,
+                                qty: matched_qty,
+                                symbol: selling_order.symbol.clone(),
+                                time: get_time(),
+                            });
+
+                        let seller_fills = fills
+                            .entry(selling_order.order_id.clone())
+                            .or_insert(Vec::new())
+                            .push(Fill {
+                                order_id: selling_order.order_id.clone(),
+                                maker_id: selling_order.order_id.clone(),
+                                taker_id: incoming_ord_id.clone(),
+                                price: selling_order.price,
+                                qty: matched_qty,
+                                symbol: selling_order.symbol.clone(),
+                                time: get_time(),
+                            });
+
+                        let buy_order = match orders.get_mut(&incoming_ord_id) {
+                            Some(ord) => {
+                                ord.filled_qty += matched_qty;
+                                ord.remaining_qty -= matched_qty;
                             }
-                            None => {
-                                //I think here i need to create a fresh one and insert it to this.
-                                let fills_id = fills.entry(incoming_ord_id.clone()).or_default();
-                                fills_id.push(filled_data);
-                            }
+                            None => return Err(EngineError::OrderNotFound),
                         };
 
-                        p.filled_qty += matching_qty;
-                        p.remaining_qty -= matching_qty;
+                        let sell_order = match orders.get_mut(&selling_order.order_id) {
+                            Some(ord) => {
+                                ord.filled_qty += matched_qty;
+                                ord.remaining_qty -= matched_qty;
+                            }
+                            None => return Err(EngineError::OrderNotFound),
+                        };
+
+                        selling_order.remaining_qty -= matched_qty;
+                        incoming_remaining_qty -= matched_qty;
+
+                        if selling_order.remaining_qty == 0 {
+                            asks.pop_front();
+                        }
 
                         if incoming_remaining_qty == 0 {
                             break;
                         }
-
-                        if p.remaining_qty == 0 {
-                            match fills.get_mut(&p.order_id) {
-                                Some(fill) => fill.push(Fill {
-                                    order_id: p.order_id.clone(),
-                                    maker_id: p.order_id.clone(),
-                                    taker_id: incoming_ord_id.clone(),
-                                    price: p.price.unwrap(),
-                                    qty: matching_qty,
-                                    symbol: incoming_ord_symbol.clone(),
-                                    time: get_time(),
-                                }),
-                                None => {
-                                    let fills_id =
-                                        fills.entry(incoming_ord_id.clone()).or_default();
-                                    fills_id.push(Fill {
-                                        order_id: p.order_id.clone(),
-                                        maker_id: p.order_id.clone(),
-                                        taker_id: incoming_ord_id.clone(),
-                                        price: p.price.unwrap(),
-                                        qty: matching_qty,
-                                        symbol: incoming_ord_symbol.clone(),
-                                        time: get_time(),
-                                    });
-                                }
-                            }
-                            check_positions(positions, fills, p.order_id.clone(), orders);
-                        }
                     }
-                    price_orders.asks.retain(|order| order.remaining_qty > 0);
+                } else {
+                    break;
+                }
+
+                if (asks.is_empty()) {
+                    book.asks.remove(&price);
                 }
             }
+
             if incoming_remaining_qty != incmoing_ord_size {
                 check_positions(positions, fills, incoming_ord_id.clone(), orders);
             }
@@ -187,18 +185,17 @@ fn handle_limit_order(
                 order_id: incoming_ord_id,
                 user_id: incoming_order_user_id,
                 qty: incmoing_ord_size as u64,
-                price: Some(incoming_ord_price),
-                filled_qty: incmoing_ord_size - incoming_remaining_qty,
+                price: incoming_ord_price,
                 remaining_qty: incoming_remaining_qty,
                 symbol: incoming_ord_symbol,
             };
             add_in_bids(book, resting_order);
-             let status : OrderStatus;
+            let status: OrderStatus;
             if incoming_remaining_qty == incmoing_ord_size {
                 status = OrderStatus::Open
-            }else if incoming_remaining_qty > 0 {
+            } else if incoming_remaining_qty > 0 {
                 status = OrderStatus::PartiallyFilled
-            }else{
+            } else {
                 status = OrderStatus::Filled
             }
             return Ok(CreateOrderResponse {
@@ -214,88 +211,85 @@ fn handle_limit_order(
                 let fill_vec = fills.entry(order_id).or_insert(Vec::new());
             }
 
-            let mut prices: Vec<u64> = book.keys().copied().collect();
-            prices.sort_by(|a, b| b.cmp(a));
-
             let mut incoming_remaining_qty = incmoing_ord_size;
-
-            for i in 0..prices.len() {
-                let price = prices[i];
-                let price_orders = match book.get_mut(&price) {
-                    Some(ord) => ord,
-                    None => {
-                        continue;
-                    }
-                };
-                if incoming_remaining_qty == 0 {
-                    println!("Order is matched fully nothing is left to match");
-                    break;
-                }
-                if &price >= &incoming_ord_price {
-                    //Loop through the orders;
-                    for p in price_orders.asks.iter_mut() {
-                        let matching_qty = std::cmp::min(p.remaining_qty, incoming_remaining_qty);
-                        incoming_remaining_qty -= matching_qty;
-                        let filled_data = Fill {
-                            order_id: incoming_ord_id.clone(),
-                            maker_id: p.order_id.clone(),
-                            taker_id: incoming_ord_id.clone(),
-                            price: p.price.unwrap(),
-                            qty: matching_qty,
-                            symbol: incoming_ord_symbol.clone(),
-                            time: get_time(),
-                        };
-                        //Add to the fills array;
-
-                        match fills.get_mut(&incoming_ord_id) {
-                            Some(fill) => {
-                                fill.push(filled_data);
-                            }
-                            None => {
-                                //I think here i need to create a fresh one and insert it to this.
-                                let fills_id = fills.entry(incoming_ord_id.clone()).or_default();
-                                fills_id.push(filled_data);
-                            }
-                        };
-
-                        p.filled_qty += matching_qty;
-                        p.remaining_qty -= matching_qty;
-
-                        if incoming_remaining_qty == 0 {
+            while incoming_remaining_qty > 0 {
+                    let mut entry = match book.bids.last_entry() {
+                        Some(entry) => entry,
+                        None => {
                             break;
                         }
+                    };
+                    let price = *entry.key();
+                    let asks: &mut VecDeque<RestingOrder> = entry.get_mut();
 
-                        if (matching_qty > 0) {
-                            match fills.get_mut(&p.order_id) {
-                                Some(fill) => fill.push(Fill {
-                                    order_id: p.order_id.clone(),
-                                    maker_id: p.order_id.clone(),
+                    if price >= incoming_ord_price {
+                        while let Some(front) = asks.front_mut() {
+                            let selling_order = front;
+
+                            let matched_qty =
+                                std::cmp::min(incoming_remaining_qty, selling_order.remaining_qty);
+
+                            let buyer_fills = fills
+                                .entry(incoming_ord_id.clone())
+                                .or_insert(Vec::new())
+                                .push(Fill {
+                                    order_id: incoming_ord_id.clone(),
+                                    maker_id: selling_order.order_id.clone(),
                                     taker_id: incoming_ord_id.clone(),
-                                    price: p.price.unwrap(),
-                                    qty: matching_qty,
-                                    symbol: incoming_ord_symbol.clone(),
+                                    price: selling_order.price,
+                                    qty: matched_qty,
+                                    symbol: selling_order.symbol.clone(),
                                     time: get_time(),
-                                }),
-                                None => {
-                                    let fills_id =
-                                        fills.entry(incoming_ord_id.clone()).or_default();
-                                    fills_id.push(Fill {
-                                        order_id: p.order_id.clone(),
-                                        maker_id: p.order_id.clone(),
-                                        taker_id: incoming_ord_id.clone(),
-                                        price: p.price.unwrap(),
-                                        qty: matching_qty,
-                                        symbol: incoming_ord_symbol.clone(),
-                                        time: get_time(),
-                                    });
+                                });
+
+                            let seller_fills = fills
+                                .entry(selling_order.order_id.clone())
+                                .or_insert(Vec::new())
+                                .push(Fill {
+                                    order_id: selling_order.order_id.clone(),
+                                    maker_id: selling_order.order_id.clone(),
+                                    taker_id: incoming_ord_id.clone(),
+                                    price: selling_order.price,
+                                    qty: matched_qty,
+                                    symbol: selling_order.symbol.clone(),
+                                    time: get_time(),
+                                });
+
+                            let buy_order = match orders.get_mut(&incoming_ord_id) {
+                                Some(ord) => {
+                                    ord.filled_qty += matched_qty;
+                                    ord.remaining_qty -= matched_qty;
                                 }
+                                None => return Err(EngineError::OrderNotFound),
+                            };
+
+                            let sell_order = match orders.get_mut(&selling_order.order_id) {
+                                Some(ord) => {
+                                    ord.filled_qty += matched_qty;
+                                    ord.remaining_qty -= matched_qty;
+                                }
+                                None => return Err(EngineError::OrderNotFound),
+                            };
+
+                            selling_order.remaining_qty -= matched_qty;
+                            incoming_remaining_qty -= matched_qty;
+
+                            if selling_order.remaining_qty == 0 {
+                                asks.pop_front();
                             }
-                            check_positions(positions, fills, p.order_id.clone(), orders);
+
+                            if incoming_remaining_qty == 0 {
+                                break;
+                            }
                         }
+                    } else {
+                        break;
                     }
-                    price_orders.asks.retain(|order| order.remaining_qty > 0);
+
+                    if (asks.is_empty()) {
+                        book.asks.remove(&price);
+                    }
                 }
-            }
 
             if incoming_remaining_qty != incmoing_ord_size {
                 println!("Checking Positions");
@@ -306,18 +300,18 @@ fn handle_limit_order(
                 order_id: incoming_ord_id,
                 user_id: incoming_order_user_id,
                 qty: incmoing_ord_size as u64,
-                price: Some(incoming_ord_price),
-                filled_qty: incmoing_ord_size - incoming_remaining_qty,
+                price: incoming_ord_price,
                 remaining_qty: incoming_remaining_qty,
                 symbol: incoming_ord_symbol,
             };
+            
             add_in_sorts(book, resting_order);
-            let status : OrderStatus;
+            let status: OrderStatus;
             if incoming_remaining_qty == incmoing_ord_size {
                 status = OrderStatus::Open
-            }else if incoming_remaining_qty > 0 {
+            } else if incoming_remaining_qty > 0 {
                 status = OrderStatus::PartiallyFilled
-            }else{
+            } else {
                 status = OrderStatus::Filled
             }
             return Ok(CreateOrderResponse {
@@ -335,27 +329,21 @@ fn get_time() -> String {
     local.to_string()
 }
 
-fn add_in_bids(book: &mut HashMap<u64, OrderBook>, resting_order: RestingOrder) {
-    let price = resting_order.price.unwrap();
-    let order_book = book.entry(price).or_insert(OrderBook {
-        asks: Vec::new(),
-        bids: Vec::new(),
-    });
-    order_book.bids.push(resting_order);
+fn add_in_bids(book: &mut OrderBook, resting_order: RestingOrder) {
+    let price = resting_order.price;
+    let bid_side = book.bids.entry(price).or_insert(VecDeque::new());
+    bid_side.push_back(resting_order);
     println!("Added in orderbook ");
-    println!("Book looks like : {:?}", order_book);
+    println!("Bid Side Book looks like : {:?}", bid_side);
     return;
 }
 
-fn add_in_sorts(book: &mut HashMap<u64, OrderBook>, resting_order: RestingOrder) {
-    let price = resting_order.price.unwrap();
-    let orderbook = book.entry(price).or_insert(OrderBook {
-        asks: Vec::new(),
-        bids: Vec::new(),
-    });
-    orderbook.asks.push(resting_order);
+fn add_in_sorts(book: &mut OrderBook, resting_order: RestingOrder) {
+    let price = resting_order.price;
+    let ask_side = book.asks.entry(price).or_insert(VecDeque::new());
+    ask_side.push_back(resting_order);
     println!("Added in orderbook ");
-    println!("Book looks like : {:?}", orderbook);
+    println!("Ask side looks like : {:?}", ask_side);
     return;
 }
 
@@ -456,18 +444,19 @@ fn risk_engine(positions: &HashMap<String, Position>, order_size: i64, user_id: 
 
 fn handle_market_order(
     order_id: String,
-    book: &mut HashMap<u64, OrderBook>,
+    book: &mut OrderBook,
     positions: &mut HashMap<String, Position>,
     orders: &mut HashMap<String, Order>,
     fills: &mut HashMap<String, Vec<Fill>>,
 ) -> Result<CreateOrderResponse, EngineError> {
-    let (incoming_qty, incoming_side, incoming_leverage, incoming_user_id) =
+    let (incoming_qty, incoming_side, incoming_leverage, incoming_user_id, incoming_price) =
         match orders.get(&order_id) {
             Some(ord) => (
                 ord.size,
                 ord.order_side.clone(),
                 ord.leverage,
                 ord.user_id.clone(),
+                ord.price,
             ),
             None => {
                 println!("Order not found");
@@ -489,219 +478,214 @@ fn handle_market_order(
         //Check the balances;
     }
 
+    let mut incoming_remaining_qty = incoming_qty;
     match incoming_side {
         OrderSide::Buy => {
-            //Sort the book prices first;
-            let mut prices: Vec<u64> = book.keys().copied().collect();
-            prices.sort();
-
             {
-                fills.entry(order_id).or_insert(Vec::new());
+                fills.entry(order_id.clone()).or_insert(Vec::new());
             }
 
-            let mut incoming_remaining_qty = incoming_qty;
-            for i in 0..prices.len() {
-                let price = prices[i];
-
-                let price_orders = match book.get_mut(&price) {
-                    Some(ask) => ask,
+            while incoming_remaining_qty > 0 {
+                let mut entry = match book.asks.first_entry() {
+                    Some(entry) => entry,
                     None => {
-                        continue;
-                    }
-                };
-
-                if incoming_remaining_qty == 0 {
-                    println!("Order is matched fully nothing is left to match");
-                    break;
-                }
-
-                for selling_order in price_orders.asks.iter_mut() {
-                    //Sellable order is :
-                    let matching_qty =
-                        std::cmp::min(incoming_remaining_qty, selling_order.remaining_qty);
-                    let filled_data = Fill {
-                        order_id: incoming_order_id.clone(),
-                        maker_id: selling_order.order_id.clone(),
-                        taker_id: incoming_order_id.clone(),
-                        price: selling_order.price.unwrap(),
-                        qty: matching_qty,
-                        symbol: selling_order.symbol.clone(),
-                        time: get_time(),
-                    };
-
-                    //Push to fills :
-                    match fills.get_mut(&incoming_order_id) {
-                        Some(fill) => {
-                            fill.push(filled_data);
-                        }
-                        None => {
-                            //I think here i need to create a fresh one and insert it to this.
-                            let fills_id = fills.entry(incoming_order_id.clone()).or_default();
-                            fills_id.push(filled_data);
-                        }
-                    };
-
-                    //Remove the current selling order remainign qty;
-                    selling_order.remaining_qty -= matching_qty;
-                    selling_order.filled_qty += matching_qty;
-
-                    //Incoming order remaining qty is :
-                    if incoming_remaining_qty == 0 {
                         break;
                     }
+                };
+                let price = *entry.key();
+                let asks: &mut VecDeque<RestingOrder> = entry.get_mut();
 
-                    if selling_order.remaining_qty == 0 {
-                        //Push to the fills array
-                        match fills.get_mut(&selling_order.order_id) {
-                            Some(fill) => fill.push(Fill {
+                if (price <= incoming_price) {
+                    while let Some(front) = asks.front_mut() {
+                        let selling_order = front;
+
+                        let matched_qty =
+                            std::cmp::min(incoming_remaining_qty, selling_order.remaining_qty);
+
+                        let buyer_fills = fills
+                            .entry(incoming_order_id.clone())
+                            .or_insert(Vec::new())
+                            .push(Fill {
+                                order_id: incoming_order_id.clone(),
+                                maker_id: selling_order.order_id.clone(),
+                                taker_id: incoming_order_id.clone(),
+                                price: selling_order.price,
+                                qty: matched_qty,
+                                symbol: selling_order.symbol.clone(),
+                                time: get_time(),
+                            });
+
+                        let seller_fills = fills
+                            .entry(selling_order.order_id.clone())
+                            .or_insert(Vec::new())
+                            .push(Fill {
                                 order_id: selling_order.order_id.clone(),
                                 maker_id: selling_order.order_id.clone(),
                                 taker_id: incoming_order_id.clone(),
-                                price: selling_order.price.unwrap(),
-                                qty: matching_qty,
+                                price: selling_order.price,
+                                qty: matched_qty,
                                 symbol: selling_order.symbol.clone(),
                                 time: get_time(),
-                            }),
-                            None => {
-                                let fills_id = fills.entry(incoming_order_id.clone()).or_default();
-                                fills_id.push(Fill {
-                                    order_id: selling_order.order_id.clone(),
-                                    maker_id: selling_order.order_id.clone(),
-                                    taker_id: incoming_order_id.clone(),
-                                    price: selling_order.price.unwrap(),
-                                    qty: matching_qty,
-                                    symbol: selling_order.symbol.clone(),
-                                    time: get_time(),
-                                });
+                            });
+
+                        let buy_order = match orders.get_mut(&order_id) {
+                            Some(ord) => {
+                                ord.filled_qty += matched_qty;
+                                ord.remaining_qty -= matched_qty;
                             }
+                            None => return Err(EngineError::OrderNotFound),
+                        };
+
+                        let sell_order = match orders.get_mut(&selling_order.order_id) {
+                            Some(ord) => {
+                                ord.filled_qty += matched_qty;
+                                ord.remaining_qty -= matched_qty;
+                            }
+                            None => return Err(EngineError::OrderNotFound),
+                        };
+
+                        selling_order.remaining_qty -= matched_qty;
+                        incoming_remaining_qty -= matched_qty;
+
+                        if selling_order.remaining_qty == 0 {
+                            asks.pop_front();
                         }
-                        check_positions(positions, fills, selling_order.order_id.clone(), orders);
+
+                        if incoming_remaining_qty == 0 {
+                            break;
+                        }
                     }
+                } else {
+                    break;
                 }
-                price_orders.asks.retain(|s| s.remaining_qty > 0);
+
+                if (asks.is_empty()) {
+                    book.asks.remove(&price);
+                }
             }
+
+            //Sort the book prices first;
             check_positions(positions, fills, incoming_order_id, orders);
 
-            let status : OrderStatus;
+            let status: OrderStatus;
             if incoming_remaining_qty == incoming_qty {
                 status = OrderStatus::Open
-            }else if incoming_remaining_qty > 0 {
+            } else if incoming_remaining_qty > 0 {
                 status = OrderStatus::PartiallyFilled
-            }else{
+            } else {
                 status = OrderStatus::Filled
             }
             return Ok(CreateOrderResponse {
                 success: true,
                 filled_qty: incoming_qty - incoming_remaining_qty,
-                remaining_qty: incoming_qty,
+                remaining_qty: incoming_remaining_qty,
                 order_status: status,
             });
         }
 
         OrderSide::Sell => {
-            let mut prices: Vec<u64> = book.keys().copied().collect();
-            prices.sort_by(|a, b| a.cmp(b));
-
             {
-                fills.entry(order_id).or_insert(Vec::new());
-            }
-
-            let mut incoming_remaining_qty = incoming_qty;
-            for i in 0..prices.len() {
-                let price = prices[i];
-
-                let price_orders = match book.get_mut(&price) {
-                    Some(ask) => ask,
-                    None => {
-                        continue;
-                    }
-                };
-
-                if incoming_remaining_qty == 0 {
-                    println!("Order is matched fully nothing is left to match");
-                    break;
+                {
+                    fills.entry(order_id.clone()).or_insert(Vec::new());
                 }
 
-                for buying_order in price_orders.asks.iter_mut() {
-                    //Sellable order is :
-                    let matching_qty =
-                        std::cmp::min(incoming_remaining_qty, buying_order.remaining_qty);
-                    let filled_data = Fill {
-                        order_id: incoming_order_id.clone(),
-                        maker_id: buying_order.order_id.clone(),
-                        taker_id: incoming_order_id.clone(),
-                        price: buying_order.price.unwrap(),
-                        qty: matching_qty,
-                        symbol: buying_order.symbol.clone(),
-                        time: get_time(),
-                    };
-
-                    //Push to fills :
-                    match fills.get_mut(&incoming_order_id) {
-                        Some(fill) => {
-                            fill.push(filled_data);
-                        }
+                while incoming_remaining_qty > 0 {
+                    let mut entry = match book.bids.last_entry() {
+                        Some(entry) => entry,
                         None => {
-                            //I think here i need to create a fresh one and insert it to this.
-                            let fills_id = fills.entry(incoming_order_id.clone()).or_default();
-                            fills_id.push(filled_data);
+                            break;
                         }
                     };
+                    let price = *entry.key();
+                    let asks: &mut VecDeque<RestingOrder> = entry.get_mut();
 
-                    //Remove the current selling order remainign qty;
-                    buying_order.remaining_qty -= matching_qty;
-                    buying_order.filled_qty += matching_qty;
+                    if price >= incoming_price {
+                        while let Some(front) = asks.front_mut() {
+                            let selling_order = front;
 
-                    //Incoming order remaining qty is :
-                    if incoming_remaining_qty == 0 {
+                            let matched_qty =
+                                std::cmp::min(incoming_remaining_qty, selling_order.remaining_qty);
+
+                            let buyer_fills = fills
+                                .entry(incoming_order_id.clone())
+                                .or_insert(Vec::new())
+                                .push(Fill {
+                                    order_id: incoming_order_id.clone(),
+                                    maker_id: selling_order.order_id.clone(),
+                                    taker_id: incoming_order_id.clone(),
+                                    price: selling_order.price,
+                                    qty: matched_qty,
+                                    symbol: selling_order.symbol.clone(),
+                                    time: get_time(),
+                                });
+
+                            let seller_fills = fills
+                                .entry(selling_order.order_id.clone())
+                                .or_insert(Vec::new())
+                                .push(Fill {
+                                    order_id: selling_order.order_id.clone(),
+                                    maker_id: selling_order.order_id.clone(),
+                                    taker_id: incoming_order_id.clone(),
+                                    price: selling_order.price,
+                                    qty: matched_qty,
+                                    symbol: selling_order.symbol.clone(),
+                                    time: get_time(),
+                                });
+
+                            let buy_order = match orders.get_mut(&order_id) {
+                                Some(ord) => {
+                                    ord.filled_qty += matched_qty;
+                                    ord.remaining_qty -= matched_qty;
+                                }
+                                None => return Err(EngineError::OrderNotFound),
+                            };
+
+                            let sell_order = match orders.get_mut(&selling_order.order_id) {
+                                Some(ord) => {
+                                    ord.filled_qty += matched_qty;
+                                    ord.remaining_qty -= matched_qty;
+                                }
+                                None => return Err(EngineError::OrderNotFound),
+                            };
+
+                            selling_order.remaining_qty -= matched_qty;
+                            incoming_remaining_qty -= matched_qty;
+
+                            if selling_order.remaining_qty == 0 {
+                                asks.pop_front();
+                            }
+
+                            if incoming_remaining_qty == 0 {
+                                break;
+                            }
+                        }
+                    } else {
                         break;
                     }
 
-                    if buying_order.remaining_qty == 0 {
-                        //Push to the fills array
-                        match fills.get_mut(&buying_order.order_id) {
-                            Some(fill) => fill.push(Fill {
-                                order_id: buying_order.order_id.clone(),
-                                maker_id: buying_order.order_id.clone(),
-                                taker_id: incoming_order_id.clone(),
-                                price: buying_order.price.unwrap(),
-                                qty: matching_qty,
-                                symbol: buying_order.symbol.clone(),
-                                time: get_time(),
-                            }),
-                            None => {
-                                let fills_id = fills.entry(incoming_order_id.clone()).or_default();
-                                fills_id.push(Fill {
-                                    order_id: buying_order.order_id.clone(),
-                                    maker_id: buying_order.order_id.clone(),
-                                    taker_id: incoming_order_id.clone(),
-                                    price: buying_order.price.unwrap(),
-                                    qty: matching_qty,
-                                    symbol: buying_order.symbol.clone(),
-                                    time: get_time(),
-                                });
-                            }
-                        }
-                        check_positions(positions, fills, buying_order.order_id.clone(), orders);
+                    if (asks.is_empty()) {
+                        book.asks.remove(&price);
                     }
                 }
-                price_orders.asks.retain(|s| s.remaining_qty > 0);
+
+                //Sort the book prices first;
+                check_positions(positions, fills, incoming_order_id, orders);
+
+                let status: OrderStatus;
+                if incoming_remaining_qty == incoming_qty {
+                    status = OrderStatus::Open
+                } else if incoming_remaining_qty > 0 {
+                    status = OrderStatus::PartiallyFilled
+                } else {
+                    status = OrderStatus::Filled
+                }
+                return Ok(CreateOrderResponse {
+                    success: true,
+                    filled_qty: incoming_qty - incoming_remaining_qty,
+                    remaining_qty: incoming_remaining_qty,
+                    order_status: status,
+                });
             }
-            check_positions(positions, fills, incoming_order_id, orders);
-            let status : OrderStatus;
-            if incoming_remaining_qty == incoming_qty {
-                status = OrderStatus::Open
-            }else if incoming_remaining_qty > 0 {
-                status = OrderStatus::PartiallyFilled
-            }else{
-                status = OrderStatus::Filled
-            }
-            return Ok(CreateOrderResponse {
-                success: true,
-                filled_qty: incoming_qty - incoming_remaining_qty,
-                remaining_qty: incoming_qty,
-                order_status: status,
-            });
         }
     }
 }
