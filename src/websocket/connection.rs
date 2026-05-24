@@ -1,16 +1,18 @@
-use std::sync::mpsc;
+use crate::{
+    engine::types::EngineRequest, store::store::RequestType, types::types::MarkPriceData,
+    websocket::types::MarkPriceUpdate,
+};
 use futures_util::{SinkExt, StreamExt};
 use serde_json::json;
+use std::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use tokio_tungstenite::{
     connect_async,
     tungstenite::{Message, client::IntoClientRequest},
 };
-use crate::{engine::types::EngineRequest, store::store::RequestType, types::types::MarkPriceData, websocket::types::MarkPriceUpdate};
-
 
 pub fn connect_stream(tx: Sender<EngineRequest>) {
-    tokio::spawn(async move{
+    tokio::spawn(async move {
         let url = "wss://fstream.binance.com/market/ws";
         println!("Connecting with the websocket server with url : {}", url);
         let (stream, response_http) = connect_async(url).await.expect("Error in connecting");
@@ -37,11 +39,14 @@ pub fn connect_stream(tx: Sender<EngineRequest>) {
             match message {
                 Ok(msg) => {
                     //println!("Message is : {}", msg.to_text().unwrap());
-                    tx.send(EngineRequest::MarkPriceUpdate { data: MarkPriceData{
-                        price : 10000,
-                        symbol : String::from("BTC")
-                        } 
-                    }).await.expect("Error in sending price to the engine thread");
+                    tx.send(EngineRequest::MarkPriceUpdate {
+                        data: MarkPriceData {
+                            price: 10000,
+                            symbol: String::from("BTC"),
+                        },
+                    })
+                    .await
+                    .expect("Error in sending price to the engine thread");
                 }
                 Err(e) => println!("Error is : {}", e),
             }

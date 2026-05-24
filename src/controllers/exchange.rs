@@ -2,7 +2,7 @@ use actix_web::{App, HttpResponse, Responder, web};
 use tokio::sync::oneshot;
 
 use crate::{
-    engine::types::{EngineRequest, EngineResponse},
+    engine::types::{CreateOrderResponse, EngineError, EngineRequest},
     store::store::AppState,
     types::types::{DeleteOrderData, IncomingOrder, OnRamp},
 };
@@ -30,19 +30,11 @@ pub async fn create_order(
     body: web::Json<IncomingOrder>,
     data: web::Data<AppState>,
 ) -> impl Responder {
-    let (tx, rx) = oneshot::channel();
+    let (tx, rx) = oneshot::channel::<Result<CreateOrderResponse, EngineError>>();
     let incoming_data = body.0;
     let users = data.users.lock().expect("Error in getting lock on usres");
 
     println!("Users are : {:?}", users);
-    //Checking if the user_id is matching with the user_id send;
-    // match users.get(&incoming_data.user_id) {
-    //     Some(_) => {}
-    //     None => {
-    //         println!("{:?}", users);
-    //         return HttpResponse::BadRequest().body("User does not exist");
-    //     }
-    // };
 
     drop(users);
 
@@ -54,15 +46,20 @@ pub async fn create_order(
         })
         .await;
 
-    match rx.await {
-        Ok(data) => match data {
-            EngineResponse::CreateOrderResponse(res) => {
-                return HttpResponse::Ok().json(res);
+    match rx.await{
+        Ok(response)=> {
+            match response{
+                Ok(res)=> {
+                    return HttpResponse::Ok().json(res);
+                },
+                Err(err)=>{
+                    return HttpResponse::BadRequest().json(err);
+                }
             }
-            _ => HttpResponse::InternalServerError().body("Invalid response type"),
         },
         Err(_) => {
-            return HttpResponse::BadGateway().body("No response from engine");
+            println!("Error in recieving message from the engine");
+            return HttpResponse::BadRequest().finish();
         }
     }
 }
@@ -75,15 +72,18 @@ pub async fn delete_order(
 
     let _ = data
         .sender
-        .send(EngineRequest::DeleteOrderData { data: body.0, response_tx: tx })
+        .send(EngineRequest::DeleteOrderData {
+            data: body.0,
+            response_tx: tx,
+        })
         .await;
 
     match rx.await {
         Ok(data) => match data {
-            EngineResponse::CreateOrderResponse(res) => {
-                return HttpResponse::Ok().json(res);
+            Ok(d)=>{
+                return HttpResponse::Ok().json(d);
             }
-            _ => HttpResponse::InternalServerError().body("Invalid response type"),
+            Err(err) => HttpResponse::BadRequest().json(err)
         },
         Err(_) => {
             return HttpResponse::BadGateway().body("No response from engine");

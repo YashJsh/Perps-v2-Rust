@@ -1,10 +1,13 @@
 use std::collections::HashMap;
 use tokio::sync::oneshot::{Receiver, Sender};
 
-use crate::{engine::{
-    create_order::create_order,
-    types::{EngineResponse, Fill, Order, OrderBook, OrderSide, OrderType, Position},
-}, types::types::IncomingOrder};
+use crate::{
+    engine::{
+        create_order::create_order,
+        types::{Fill, Order, OrderBook, OrderSide, OrderType, Position},
+    },
+    types::types::IncomingOrder,
+};
 
 pub fn liquidation(
     index_price: u64,
@@ -15,43 +18,40 @@ pub fn liquidation(
 ) {
     let mut liquid_orders = Vec::new();
     for (user_id, position) in positions.iter() {
-        let mut side : OrderSide;
-        if position.size <= 0{
+        let mut side: OrderSide;
+        if position.size <= 0 {
             side = OrderSide::Sell;
-        }else {
+        } else {
             side = OrderSide::Buy;
         }
         if should_liquidate(position, index_price) {
-            liquid_orders.push(
-                IncomingOrder {
-                    user_id: user_id.clone(),
-                    leverage : position.leverage,
-                    order_side : side,
-                    order_type : OrderType::Market,
-                    price : None,
-                    size : position.size as u64,
-                    symbol : position.symbol.clone()
-                }
-            );
+            liquid_orders.push(IncomingOrder {
+                user_id: user_id.clone(),
+                leverage: position.leverage,
+                order_side: side,
+                order_type: OrderType::Market,
+                price: None,
+                size: position.size as u64,
+                symbol: position.symbol.clone(),
+            });
         }
     }
-    for i in liquid_orders{
+    for i in liquid_orders {
         create_order(i, orders, book, positions, fills);
     }
 }
 
-fn should_liquidate(position : &Position, index_price : u64)-> bool{
-    if position.size <= 0{
-        if position.liquidation_price >= index_price{
+fn should_liquidate(position: &Position, index_price: u64) -> bool {
+    if position.size <= 0 {
+        if position.liquidation_price >= index_price {
             return true;
-        }
-        else{
+        } else {
             return false;
         }
-    }else{
-        if position.liquidation_price <= index_price{
+    } else {
+        if position.liquidation_price <= index_price {
             return true;
-        }else{
+        } else {
             return false;
         }
     }

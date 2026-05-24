@@ -1,18 +1,16 @@
 use std::{collections::HashMap, sync::Mutex};
 
-mod controllers;
-mod types;
-mod store;
-mod utils;
-mod engine;
-mod websocket;
-
 use actix_web::{self, App, HttpServer, dev::ResourcePath, web};
+use perps_v1::{
+    controllers::{
+        auth::{sign_in, sign_up},
+        exchange::{create_order, on_ramp},
+    },
+    engine::engine::run_engine,
+    store::store::AppState,
+};
 
-use controllers::auth::{sign_in, sign_up};
-use tokio::sync::{mpsc};
-
-use crate::{controllers::exchange::{create_order, on_ramp}, engine::engine::run_engine, store::store::AppState};
+use tokio::sync::mpsc;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -22,37 +20,27 @@ async fn main() -> std::io::Result<()> {
 
     // connect_stream(tx1);
     run_engine(rx).await; //This runs the engine.
-    
+
     println!("Server is starting ");
-    let app_state = web::Data::new(
-                AppState{
-                    users : Mutex::new(HashMap::new()),
-                    balances : Mutex::new(HashMap::new()),
-                    sender : tx.clone()
-                }
-            );
-    let _ = HttpServer::new(move|| {
+    let app_state = web::Data::new(AppState {
+        users: Mutex::new(HashMap::new()),
+        balances: Mutex::new(HashMap::new()),
+        sender: tx.clone(),
+    });
+    let _ = HttpServer::new(move || {
         App::new()
-        .app_data(
-            app_state.clone()
-        )
-        .service(
-            web::scope("/api")
-            .route("/signup", web::post().to(sign_up))
-            .route("/signin", web::post().to(sign_in))
-        )
-        .service(
-            web::scope("/onramp")
-            .route("/", web::post().to(on_ramp))
-        )
-        .service(
-            web::scope("/order")
-            .route("/create", web::post().to(create_order))
-        )
+            .app_data(app_state.clone())
+            .service(
+                web::scope("/api")
+                    .route("/signup", web::post().to(sign_up))
+                    .route("/signin", web::post().to(sign_in)),
+            )
+            .service(web::scope("/onramp").route("/", web::post().to(on_ramp)))
+            .service(web::scope("/order").route("/create", web::post().to(create_order)))
     })
     .bind(("127.0.0.1", 8080))?
     .run()
     .await;
-    
+
     Ok(())
 }

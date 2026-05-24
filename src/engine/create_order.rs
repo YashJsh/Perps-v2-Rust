@@ -1,9 +1,11 @@
-use std::collections::HashMap;
 use chrono::Local;
+use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::{
-    engine::types::{Fill, Order, OrderBook, OrderSide, OrderType, Position, RestingOrder},
+    engine::types::{
+        CreateOrderResponse, EngineError, Fill, Order, OrderBook, OrderSide, OrderStatus, OrderType, Position, RestingOrder
+    },
     types::types::IncomingOrder,
 };
 
@@ -13,7 +15,7 @@ pub fn create_order(
     book: &mut HashMap<u64, OrderBook>,
     positions: &mut HashMap<String, Position>,
     fills: &mut HashMap<String, Vec<Fill>>,
-) {
+) -> Result<CreateOrderResponse, EngineError> {
     let order_id = Uuid::new_v4().to_string();
     let order_type = data.order_type.clone();
     let new_order = Order {
@@ -25,28 +27,29 @@ pub fn create_order(
         size: data.size as u64,
         price: data.price,
         leverage: data.leverage,
-        status : super::types::OrderStatus::Open
+        status: super::types::OrderStatus::Open,
     };
     orders.insert(order_id.clone(), new_order);
+    println!("Order inserted in orders with order_id : {}", order_id);
 
     match order_type {
         OrderType::Market => {
-            handleMarketOrder(order_id, book, positions, orders, fills);
+            handle_market_order(order_id, book, positions, orders, fills)
         }
         OrderType::Limit => {
-            handleLimitOrder(order_id, book, positions, orders, fills);
+            handle_limit_order(order_id, book, positions, orders, fills)
         }
     }
 }
 
 //What are the things i need to do for limit order;
-fn handleLimitOrder(
+fn handle_limit_order(
     order_id: String,
     book: &mut HashMap<u64, OrderBook>,
     positions: &mut HashMap<String, Position>,
     orders: &mut HashMap<String, Order>,
     fills: &mut HashMap<String, Vec<Fill>>,
-) {
+) -> Result<CreateOrderResponse, EngineError>{
     let (
         incoming_ord_price,
         incmoing_ord_size,
@@ -62,8 +65,7 @@ fn handleLimitOrder(
             ord.user_id.clone(),
         ),
         None => {
-            println!("No order found");
-            return;
+            return Err(EngineError::OrderNotFound);
         }
     };
 
@@ -76,6 +78,7 @@ fn handleLimitOrder(
 
     //Here risk engine will run. And according to the bool result
     //It will check or not check the collateral, balance for the new order.
+    println!("Checking with risk engine");
     let check = risk_engine(
         &positions,
         incmoing_order_signed_size,
@@ -84,9 +87,12 @@ fn handleLimitOrder(
 
     if check {
         //Check balances margin collateral and all here.
+        println!("Risk is increasing will check the balances");
     }
+
     match incoming_ord_side {
         OrderSide::Buy => {
+            println!("Buy Limit Order");
             {
                 fills.entry(order_id).or_insert(Vec::new());
             }
@@ -106,7 +112,7 @@ fn handleLimitOrder(
                 };
                 if incoming_remaining_qty == 0 {
                     println!("Order is matched fully nothing is left to match");
-                    return;
+                    break;
                 }
                 if &price <= &incoming_ord_price {
                     //Loop through the orders;
@@ -142,7 +148,7 @@ fn handleLimitOrder(
                             break;
                         }
 
-                        if (p.remaining_qty == 0) {
+                        if p.remaining_qty == 0 {
                             match fills.get_mut(&p.order_id) {
                                 Some(fill) => fill.push(Fill {
                                     order_id: p.order_id.clone(),
@@ -173,7 +179,7 @@ fn handleLimitOrder(
                     price_orders.asks.retain(|order| order.remaining_qty > 0);
                 }
             }
-            if incoming_remaining_qty != incmoing_ord_size{
+            if incoming_remaining_qty != incmoing_ord_size {
                 check_positions(positions, fills, incoming_ord_id.clone(), orders);
             }
             //Add the order in the book;
@@ -187,6 +193,20 @@ fn handleLimitOrder(
                 symbol: incoming_ord_symbol,
             };
             add_in_bids(book, resting_order);
+             let status : OrderStatus;
+            if incoming_remaining_qty == incmoing_ord_size {
+                status = OrderStatus::Open
+            }else if incoming_remaining_qty > 0 {
+                status = OrderStatus::PartiallyFilled
+            }else{
+                status = OrderStatus::Filled
+            }
+            return Ok(CreateOrderResponse {
+                success: true,
+                filled_qty: incmoing_ord_size - incoming_remaining_qty,
+                remaining_qty: incoming_remaining_qty,
+                order_status: status,
+            });
         }
 
         OrderSide::Sell => {
@@ -209,7 +229,7 @@ fn handleLimitOrder(
                 };
                 if incoming_remaining_qty == 0 {
                     println!("Order is matched fully nothing is left to match");
-                    return;
+                    break;
                 }
                 if &price >= &incoming_ord_price {
                     //Loop through the orders;
@@ -276,8 +296,8 @@ fn handleLimitOrder(
                     price_orders.asks.retain(|order| order.remaining_qty > 0);
                 }
             }
-            
-            if incoming_remaining_qty != incmoing_ord_size{
+
+            if incoming_remaining_qty != incmoing_ord_size {
                 println!("Checking Positions");
                 check_positions(positions, fills, incoming_ord_id.clone(), orders);
             }
@@ -292,6 +312,20 @@ fn handleLimitOrder(
                 symbol: incoming_ord_symbol,
             };
             add_in_sorts(book, resting_order);
+            let status : OrderStatus;
+            if incoming_remaining_qty == incmoing_ord_size {
+                status = OrderStatus::Open
+            }else if incoming_remaining_qty > 0 {
+                status = OrderStatus::PartiallyFilled
+            }else{
+                status = OrderStatus::Filled
+            }
+            return Ok(CreateOrderResponse {
+                success: true,
+                filled_qty: incmoing_ord_size - incoming_remaining_qty,
+                remaining_qty: incoming_remaining_qty,
+                order_status: status,
+            });
         }
     }
 }
@@ -353,7 +387,6 @@ fn check_positions(
         count += 1;
         price_and_qty += i.price * i.qty;
     }
-
 
     let average_entry_price = price_and_qty / count;
 
@@ -421,13 +454,13 @@ fn risk_engine(positions: &HashMap<String, Position>, order_size: i64, user_id: 
     output
 }
 
-fn handleMarketOrder(
+fn handle_market_order(
     order_id: String,
     book: &mut HashMap<u64, OrderBook>,
     positions: &mut HashMap<String, Position>,
     orders: &mut HashMap<String, Order>,
     fills: &mut HashMap<String, Vec<Fill>>,
-) {
+) -> Result<CreateOrderResponse, EngineError> {
     let (incoming_qty, incoming_side, incoming_leverage, incoming_user_id) =
         match orders.get(&order_id) {
             Some(ord) => (
@@ -438,7 +471,7 @@ fn handleMarketOrder(
             ),
             None => {
                 println!("Order not found");
-                return;
+                return Err(EngineError::OrderNotFound);
             }
         };
 
@@ -457,7 +490,6 @@ fn handleMarketOrder(
     }
 
     match incoming_side {
-
         OrderSide::Buy => {
             //Sort the book prices first;
             let mut prices: Vec<u64> = book.keys().copied().collect();
@@ -480,7 +512,7 @@ fn handleMarketOrder(
 
                 if incoming_remaining_qty == 0 {
                     println!("Order is matched fully nothing is left to match");
-                    return;
+                    break;
                 }
 
                 for selling_order in price_orders.asks.iter_mut() {
@@ -545,16 +577,30 @@ fn handleMarketOrder(
                         }
                         check_positions(positions, fills, selling_order.order_id.clone(), orders);
                     }
-
                 }
                 price_orders.asks.retain(|s| s.remaining_qty > 0);
             }
             check_positions(positions, fills, incoming_order_id, orders);
+
+            let status : OrderStatus;
+            if incoming_remaining_qty == incoming_qty {
+                status = OrderStatus::Open
+            }else if incoming_remaining_qty > 0 {
+                status = OrderStatus::PartiallyFilled
+            }else{
+                status = OrderStatus::Filled
+            }
+            return Ok(CreateOrderResponse {
+                success: true,
+                filled_qty: incoming_qty - incoming_remaining_qty,
+                remaining_qty: incoming_qty,
+                order_status: status,
+            });
         }
 
         OrderSide::Sell => {
             let mut prices: Vec<u64> = book.keys().copied().collect();
-            prices.sort_by(|a,b| a.cmp(b));
+            prices.sort_by(|a, b| a.cmp(b));
 
             {
                 fills.entry(order_id).or_insert(Vec::new());
@@ -573,7 +619,7 @@ fn handleMarketOrder(
 
                 if incoming_remaining_qty == 0 {
                     println!("Order is matched fully nothing is left to match");
-                    return;
+                    break;
                 }
 
                 for buying_order in price_orders.asks.iter_mut() {
@@ -638,11 +684,24 @@ fn handleMarketOrder(
                         }
                         check_positions(positions, fills, buying_order.order_id.clone(), orders);
                     }
-
                 }
                 price_orders.asks.retain(|s| s.remaining_qty > 0);
             }
             check_positions(positions, fills, incoming_order_id, orders);
+            let status : OrderStatus;
+            if incoming_remaining_qty == incoming_qty {
+                status = OrderStatus::Open
+            }else if incoming_remaining_qty > 0 {
+                status = OrderStatus::PartiallyFilled
+            }else{
+                status = OrderStatus::Filled
+            }
+            return Ok(CreateOrderResponse {
+                success: true,
+                filled_qty: incoming_qty - incoming_remaining_qty,
+                remaining_qty: incoming_qty,
+                order_status: status,
+            });
         }
     }
 }

@@ -1,27 +1,26 @@
+use std::collections::HashMap;
 use std::sync::Mutex;
-use std::{collections::HashMap};
 
 use tokio::sync::mpsc::Sender;
 
-use crate::engine::types::{ EngineRequest};
-use crate::utils::user::User;
+use crate::engine::types::EngineRequest;
 use crate::types::types::{Balances, GetBalance, IncomingOrder};
+use crate::utils::user::User;
 
 #[derive(Clone)]
-pub enum RequestType{
+pub enum RequestType {
     CreateOrder,
     UpateMarkPrice,
-    CheckBalance
+    CheckBalance,
 }
 
-pub enum DataTypes{
+pub enum DataTypes {
     IncomingOrder,
-    GetBalance
+    GetBalance,
 }
 
-
-pub struct AppState{
-    pub users : Mutex<HashMap<String, User>>,
-    pub balances : Mutex<HashMap<String, Balances>>,
-    pub sender : Sender<EngineRequest>,
-}       
+pub struct AppState {
+    pub users: Mutex<HashMap<String, User>>,
+    pub balances: Mutex<HashMap<String, Balances>>,
+    pub sender: Sender<EngineRequest>,
+}
