@@ -186,7 +186,7 @@ pub async fn run_engine(mut rx: Receiver<EngineRequest>) {
                 }
 
                 EngineRequest::DeleteOrderData { data, response_tx } => {
-                    let data = delete_order_func(data, &mut orders, &mut order_book);
+                    let data = delete_order_func(data, &mut orders, &mut order_book, &btc_balance_tx);
                     let _ = response_tx.send(data);
                 }
 

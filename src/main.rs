@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Mutex};
 
-use actix_web::{self, App, HttpServer, dev::ResourcePath, web};
+use actix_web::{self, App, HttpServer, web};
 use perps_v1::{
     controllers::{
         auth::{sign_in, sign_up},

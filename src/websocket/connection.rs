@@ -1,14 +1,12 @@
 use crate::{
-    engine::types::EngineRequest, store::store::RequestType, types::types::MarkPriceData,
-    websocket::types::MarkPriceUpdate,
+    engine::types::EngineRequest, types::types::MarkPriceData,
 };
 use futures_util::{SinkExt, StreamExt};
 use serde_json::json;
-use std::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use tokio_tungstenite::{
     connect_async,
-    tungstenite::{Message, client::IntoClientRequest},
+    tungstenite::{Message},
 };
 
 pub fn connect_stream(tx: Sender<EngineRequest>) {
