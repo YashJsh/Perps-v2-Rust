@@ -132,7 +132,8 @@ pub struct DepthResponse{
 #[derive(serde::Serialize)]
 pub struct BalanceResponse{
     pub user_id : String,
-    pub balance : u64
+    pub balance : u64,
+    pub locked : u64
 }
 
 #[derive(Serialize)]
@@ -143,5 +144,8 @@ pub enum EngineError{
     OrderFilledAlready,
     OrderBookNotFound,
     DepthError,
-    InvalidSymbol
+    InvalidSymbol,
+    UserNotFound,
+    BalanceThreadDead,
+    NotEnoughBalance
 }

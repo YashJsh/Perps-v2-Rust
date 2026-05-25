@@ -1,24 +1,32 @@
-use tokio::sync::mpsc::{self, Receiver};
+use tokio::sync::{
+    mpsc::{self, Receiver},
+    oneshot,
+};
 
 use crate::{
     engine::{
+        check_balance::balance_actor,
         create_order::create_order,
         delete_order::delete_order_func,
         get_depth::get_depth,
         liquidation::liquidation,
-        types::{BalanceResponse, EngineRequest, Fill, Order, OrderBook, Position},
+        types::{BalanceResponse, EngineError, EngineRequest, Fill, Order, OrderBook, Position},
     },
-    types::types::Balances,
+    types::types::{BalanceRequest, Balances},
 };
 
-use std::{
-    collections::{BTreeMap, HashMap},
-};
+use std::collections::{BTreeMap, HashMap};
 
 pub async fn run_engine(mut rx: Receiver<EngineRequest>) {
     let (btx, mut brx) = mpsc::channel(100);
     let (sol_tx, sol_rx) = mpsc::channel(100);
-    let mut BALANCES: HashMap<String, Balances> = HashMap::new();
+    let (balance_tx, balance_rx) = mpsc::channel::<BalanceRequest>(100);
+    let btc_balance_tx = balance_tx.clone();
+
+    //Balance thread;
+    let _ = tokio::spawn(async move {
+        balance_actor(balance_rx).await;
+    });
 
     let engine_thread = tokio::spawn(async move {
         while let Some(event) = rx.recv().await {
@@ -26,20 +34,29 @@ pub async fn run_engine(mut rx: Receiver<EngineRequest>) {
                 EngineRequest::UpdateBalance {
                     user_id,
                     amount,
-                    response_tx,
+                    response_tx, //Engine Response directly
                 } => {
-                    let balance = BALANCES.entry(user_id.to_string()).or_insert(Balances {
-                        available: amount,
-                        locked: 0,
-                        currency: String::from("USD"),
+                    let (tx, rx) = oneshot::channel();
+                    let _ = balance_tx.send(BalanceRequest::AddBalance {
+                        user_id,
+                        amount,
+                        response_tx : tx,
                     });
-
-                    balance.available += amount;
-
-                    let _ = response_tx.send(Ok(BalanceResponse {
-                        user_id: user_id.to_string(),
-                        balance: balance.available,
-                    }));
+                    match rx.await{
+                        Ok(d) => {
+                            match d{
+                                Ok(b)=>{
+                                    let _ = response_tx.send(Ok(b));
+                                },
+                                Err(e)=>{
+                                    let _ = response_tx.send(Err(e));
+                                }
+                            }
+                        },
+                        Err(_) => {
+                            let _ = response_tx.send(Err(EngineError::BalanceThreadDead));
+                        }
+                    };
                 }
 
                 other_event => match &other_event {
@@ -114,12 +131,13 @@ pub async fn run_engine(mut rx: Receiver<EngineRequest>) {
                     },
 
                     _ => {}
-                },    
+                },
             }
         }
     });
 
     //BTC_Thread
+   
     let Btc_thread = tokio::spawn(async move {
         let mut order_book = OrderBook {
             bids: BTreeMap::new(),
@@ -140,6 +158,7 @@ pub async fn run_engine(mut rx: Receiver<EngineRequest>) {
                         &mut order_book,
                         &mut positions,
                         &mut fills,
+                        &btc_balance_tx
                     );
                     match response {
                         Ok(res) => {

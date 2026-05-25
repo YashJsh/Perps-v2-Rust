@@ -4,3 +4,4 @@ pub mod engine;
 pub mod liquidation;
 pub mod types;
 pub mod get_depth;
+pub mod check_balance;

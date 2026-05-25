@@ -1,5 +1,6 @@
 use chrono::Local;
-use std::collections::{HashMap, VecDeque};
+use tokio::sync::{mpsc::{self, Sender}, oneshot};
+use std::{collections::{HashMap, VecDeque}};
 use uuid::Uuid;
 
 use crate::{
@@ -7,7 +8,7 @@ use crate::{
         CreateOrderResponse, EngineError, Fill, Order, OrderBook, OrderSide, OrderStatus,
         OrderType, Position, RestingOrder,
     },
-    types::types::IncomingOrder,
+    types::types::{BalanceRequest, IncomingOrder},
 };
 
 pub fn create_order(
@@ -16,8 +17,43 @@ pub fn create_order(
     book: &mut OrderBook,
     positions: &mut HashMap<String, Position>,
     fills: &mut HashMap<String, Vec<Fill>>,
+    balance_tx : &Sender<BalanceRequest>
 ) -> Result<CreateOrderResponse, EngineError> {
+    let (tx, rx) = oneshot::channel();
     let order_id = Uuid::new_v4().to_string();
+
+    let incmoing_order_signed_size = match &data.order_side {
+        OrderSide::Buy => data.size as i64,
+        OrderSide::Sell => -(data.size as i64),
+    };
+
+    println!("Checking with risk engine");
+    let check = risk_engine(
+        &positions,
+        incmoing_order_signed_size,
+        &data.user_id.clone(),
+    );
+
+    if check {
+        let _ = balance_tx.blocking_send(BalanceRequest::GetBalance { user_id: data.user_id.clone(), response_tx: tx });
+        let balance = rx.blocking_recv();
+        let user_balance = match balance{
+            Ok(data)=>{
+                match data{
+                    Ok(d)=>d,
+                    Err(e)=> return Err(e),
+                }
+            },
+            Err(_)=> return Err(EngineError::BalanceThreadDead),
+        };
+        
+        let required_margin = check_required_margin(data.size, data.price, data.leverage);
+        if user_balance.balance < required_margin{
+            return Err(EngineError::NotEnoughBalance)
+        }
+    }
+
+
     let order_type = data.order_type.clone();
     let new_order = Order {
         user_id: data.user_id,
@@ -69,28 +105,7 @@ fn handle_limit_order(
             return Err(EngineError::OrderNotFound);
         }
     };
-
     let incoming_ord_id = order_id.clone();
-
-    let incmoing_order_signed_size = match &incoming_ord_side {
-        OrderSide::Buy => incmoing_ord_size as i64,
-        OrderSide::Sell => -(incmoing_ord_size as i64),
-    };
-
-    //Here risk engine will run. And according to the bool result
-    //It will check or not check the collateral, balance for the new order.
-    println!("Checking with risk engine");
-    let check = risk_engine(
-        &positions,
-        incmoing_order_signed_size,
-        &incoming_order_user_id,
-    );
-
-    if check {
-        //Check balances margin collateral and all here.
-        println!("Risk is increasing will check the balances");
-    }
-
     match incoming_ord_side {
         OrderSide::Buy => {
             println!("Buy Limit Order");
@@ -418,13 +433,6 @@ fn check_positions(
 }
 
 fn risk_engine(positions: &HashMap<String, Position>, order_size: i64, user_id: &String) -> bool {
-    //Check if position exists
-    //If positions exists:
-    //Check if it is increasing the risk ->
-    //If yes -> return True; In this case we have to check collateral, balance and all.
-    //If no -> return False; In this case we don't have to check collateral.
-    //If no :
-    //Check then simple return false;
     let mut output = false;
     match positions.get(user_id) {
         Some(pos) => {
@@ -440,6 +448,12 @@ fn risk_engine(positions: &HashMap<String, Position>, order_size: i64, user_id: 
         }
     };
     output
+}
+
+fn check_required_margin(size : u64, price : u64, leverage : u64)-> u64{
+    let notional_value = size * price;
+    let amount_needed = notional_value / leverage;
+    amount_needed
 }
 
 fn handle_market_order(

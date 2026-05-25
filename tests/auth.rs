@@ -13,7 +13,6 @@ fn test_app_state() -> web::Data<AppState> {
     let (tx, _rx) = mpsc::channel(10);
     web::Data::new(AppState {
         users: Mutex::new(HashMap::new()),
-        balances: Mutex::new(HashMap::new()),
         sender: tx,
     })
 }

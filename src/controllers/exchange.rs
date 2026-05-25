@@ -2,28 +2,33 @@ use actix_web::{App, HttpResponse, Responder, web};
 use tokio::sync::oneshot;
 
 use crate::{
-    engine::types::{CreateOrderResponse, DepthResponse, EngineError, EngineRequest},
+    engine::types::{BalanceResponse, CreateOrderResponse, DepthResponse, EngineError, EngineRequest},
     store::store::AppState,
     types::types::{DeleteOrderData, GetDepth, IncomingOrder, OnRamp},
 };
 
 pub async fn on_ramp(body: web::Json<OnRamp>, data: web::Data<AppState>) -> impl Responder {
+    let (tx, rx) = oneshot::channel::<Result<BalanceResponse, EngineError>>();
     let input_data = body.0;
     let user_id = input_data.user_id;
     let amount = input_data.amount;
-    // let mut balances = data
-    //     .balances
-    //     .try_lock()
-    //     .expect("Unable to get the balances");
-    // let bal = balances
-    //     .entry(user_id)
-    //     .or_insert(crate::types::types::Balances {
-    //         available: 0,
-    //         locked: 0,
-    //         currency: String::from("USD"),
-    //     });
-    // bal.available += amount;
-    HttpResponse::Ok().body("Balance updated successfully")
+    let _ = data.sender.send(EngineRequest::UpdateBalance { user_id, amount, response_tx: tx }).await;
+    match rx.await{
+        Ok(data)=> {
+            match data {
+                Ok(d) => {
+                    return HttpResponse::Ok().json(d);
+                },
+                Err(error) => {
+                    return HttpResponse::BadRequest().json(error);
+                }
+            }
+        }   
+        Err(_) => {
+            println!("Error in recieving message from the engine");
+            return HttpResponse::BadRequest().finish();
+        } 
+    }
 }
 
 pub async fn create_order(

@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Number;
+use tokio::sync::oneshot::{self, Sender};
 use uuid::Uuid;
 
-use crate::engine::types::{OrderSide, OrderType};
+use crate::engine::types::{BalanceResponse, EngineError, OrderSide, OrderType};
 
 #[derive(Serialize, Deserialize)]
 pub struct AuthData {
@@ -54,7 +56,7 @@ pub struct BalanceUpdateData {
 pub struct Balances {
     pub available: u64,
     pub locked: u64,
-    pub currency: String,
+    pub user_id : String
 }
 
 #[derive(Serialize)]
@@ -68,3 +70,28 @@ pub struct LogInResponse {
 pub struct GetDepth{
     pub symbol : String
 }
+
+
+pub enum BalanceRequest{
+    AddBalance{
+        user_id : String,
+        amount : u64,
+        response_tx : oneshot::Sender<Result<BalanceResponse, EngineError>>
+    },
+    LockMargin{
+        user_id : String,
+        amount : u64,
+        response_tx : oneshot::Sender<Result<BalanceResponse, EngineError>>
+    },
+    ReleaseMargin{
+        user_id : String,
+        amount : u64,
+        response_tx : oneshot::Sender<Result<BalanceResponse, EngineError>>
+    },
+    GetBalance{
+        user_id : String,
+        response_tx : oneshot::Sender<Result<BalanceResponse, EngineError>>
+    }
+}
+
+
