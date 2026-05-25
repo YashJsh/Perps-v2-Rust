@@ -4,7 +4,7 @@ use actix_web::{self, App, HttpServer, dev::ResourcePath, web};
 use perps_v1::{
     controllers::{
         auth::{sign_in, sign_up},
-        exchange::{create_order, on_ramp},
+        exchange::{create_order, delete_order, get_depth, on_ramp},
     },
     engine::engine::run_engine,
     store::store::AppState, websocket::connection::connect_stream,
@@ -35,7 +35,11 @@ async fn main() -> std::io::Result<()> {
                     .route("/signin", web::post().to(sign_in)),
             )
             .service(web::scope("/onramp").route("/", web::post().to(on_ramp)))
-            .service(web::scope("/order").route("/create", web::post().to(create_order)))
+            .service(web::scope("/order")
+                .route("/create", web::post().to(create_order))
+                .route("/delete", web::post().to(delete_order))
+            )
+            .service(web::scope("/depth").route("/", web::post().to(get_depth)))
     })
     .bind(("127.0.0.1", 8080))?
     .run()

@@ -1,11 +1,15 @@
 use std::collections::HashMap;
 
+
+
+use tokio::sync::mpsc::Sender;
+
 use crate::{
     engine::{
         create_order::create_order,
         types::{Fill, Order, OrderBook, OrderSide, OrderType, Position},
     },
-    types::types::IncomingOrder,
+    types::types::{BalanceRequest, IncomingOrder},
 };
 
 pub fn liquidation(
@@ -14,7 +18,8 @@ pub fn liquidation(
     orders: &mut HashMap<String, Order>,
     fills: &mut HashMap<String, Vec<Fill>>,
     book: &mut OrderBook,
-    market_price : u64
+    market_price : u64,
+    balance_tx : &Sender<BalanceRequest>
 ) {
     let mut liquid_orders = Vec::new();
     for (user_id, position) in positions.iter() {
@@ -38,7 +43,7 @@ pub fn liquidation(
         }
     }
     for i in liquid_orders {
-        create_order(i, orders, book, positions, fills, );
+        create_order(i, orders, book, positions, fills, balance_tx);
     }
 }
 

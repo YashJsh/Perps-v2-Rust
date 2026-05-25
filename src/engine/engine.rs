@@ -10,9 +10,9 @@ use crate::{
         delete_order::delete_order_func,
         get_depth::get_depth,
         liquidation::liquidation,
-        types::{BalanceResponse, EngineError, EngineRequest, Fill, Order, OrderBook, Position},
+        types::{EngineError, EngineRequest, Fill, Order, OrderBook, Position},
     },
-    types::types::{BalanceRequest, Balances},
+    types::types::{BalanceRequest},
 };
 
 use std::collections::{BTreeMap, HashMap};
@@ -138,7 +138,7 @@ pub async fn run_engine(mut rx: Receiver<EngineRequest>) {
 
     //BTC_Thread
    
-    let Btc_thread = tokio::spawn(async move {
+    let Btc_thread = std::thread::spawn( move || {
         let mut order_book = OrderBook {
             bids: BTreeMap::new(),
             asks: BTreeMap::new(),
@@ -148,7 +148,7 @@ pub async fn run_engine(mut rx: Receiver<EngineRequest>) {
         let mut fills: HashMap<String, Vec<Fill>> = HashMap::new();
         let mut current_index_price: u64;
 
-        while let Some(data) = brx.recv().await {
+        while let Some(data) = brx.blocking_recv(){
             match data {
                 EngineRequest::CreateOrder { order, response_tx } => {
                     //Whatever will be the returning data we will forward it from here only.
@@ -181,6 +181,7 @@ pub async fn run_engine(mut rx: Receiver<EngineRequest>) {
                         &mut fills,
                         &mut order_book,
                         current_index_price,
+                        &btc_balance_tx
                     );
                 }
 
