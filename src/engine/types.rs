@@ -63,6 +63,7 @@ pub struct Fill {
     pub price: u64,
     pub qty: u64,
     pub symbol: String,
+    pub consumed : bool,
     pub time: String,
 }
 

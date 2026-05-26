@@ -14,9 +14,15 @@ pub fn risk_engine(positions: &HashMap<String, Position>, order_size: i64, user_
             } else {
                 output = true;
             }
+            if pos.size.signum() != risk.signum(){
+                output = true;
+            }
+            if risk == 0{
+                output = false;
+            }
         }
         None => {
-            output = false;
+            output = true;
         }
     };
     output

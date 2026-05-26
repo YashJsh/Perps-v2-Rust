@@ -43,6 +43,7 @@ pub fn core_buy_logic(
                         price: selling_order.price,
                         qty: matched_qty,
                         symbol: selling_order.symbol.clone(),
+                        consumed : false,
                         time: get_time(),
                     });
 
@@ -56,6 +57,7 @@ pub fn core_buy_logic(
                         price: selling_order.price,
                         qty: matched_qty,
                         symbol: selling_order.symbol.clone(),
+                        consumed : false,
                         time: get_time(),
                     });
 
@@ -138,6 +140,7 @@ pub fn core_sell_logic(
                         price: selling_order.price,
                         qty: matched_qty,
                         symbol: selling_order.symbol.clone(),
+                        consumed : false,
                         time: get_time(),
                     });
 
@@ -151,6 +154,7 @@ pub fn core_sell_logic(
                         price: selling_order.price,
                         qty: matched_qty,
                         symbol: selling_order.symbol.clone(),
+                        consumed : false,
                         time: get_time(),
                     });
 
