@@ -51,6 +51,10 @@ pub async fn balance_actor(mut balance_rx: Receiver<BalanceRequest>) {
                         let _ = response_tx.send(Err(e));
                     }
                 }
+            },
+            BalanceRequest::ReduceBalance { user_id, amount, response_tx } => {
+                let res = reduce_balance(user_id, &mut balances, amount);
+
             }
         }
     }
@@ -78,6 +82,7 @@ pub fn handle_get_balance(user_id : String, balances : &mut HashMap<String, Bala
 pub fn lock_margin(user_id : String, balances : &mut HashMap<String, Balances>, amount : u64)-> Result<BalanceResponse, EngineError>{
     match balances.get_mut(&user_id){
         Some(b)=>{
+            b.available -= amount;
             b.locked += amount;
             return Ok(BalanceResponse { user_id, balance: b.available, locked: b.locked })
         },
@@ -90,7 +95,20 @@ pub fn lock_margin(user_id : String, balances : &mut HashMap<String, Balances>, 
 pub fn release_margin(user_id : String, balances : &mut HashMap<String, Balances>, amount : u64)-> Result<BalanceResponse, EngineError>{
      match balances.get_mut(&user_id){
         Some(b)=>{
+            b.available += amount;
             b.locked -= amount;
+            return Ok(BalanceResponse { user_id, balance: b.available, locked: b.locked })
+        },
+        None => {
+            return Err(EngineError::UserNotFound)
+        }
+    }
+}
+
+pub fn reduce_balance(user_id : String, balances : &mut HashMap<String, Balances>, amount : u64)-> Result<BalanceResponse, EngineError>{
+    match balances.get_mut(&user_id){
+        Some(b)=>{
+            b.available -= amount;
             return Ok(BalanceResponse { user_id, balance: b.available, locked: b.locked })
         },
         None => {

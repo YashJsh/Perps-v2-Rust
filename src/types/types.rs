@@ -91,6 +91,11 @@ pub enum BalanceRequest{
     GetBalance{
         user_id : String,
         response_tx : oneshot::Sender<Result<BalanceResponse, EngineError>>
+    },
+    ReduceBalance{
+        user_id : String,
+        amount : u64,
+        response_tx : oneshot::Sender<Result<BalanceResponse, EngineError>>
     }
 }
 

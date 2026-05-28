@@ -76,8 +76,8 @@ pub fn create_order(
     println!("Order inserted in orders with order_id : {}", order_id);
 
     match order_type {
-        OrderType::Market => handle_market_order(order_id, book, positions, orders, fills),
-        OrderType::Limit => handle_limit_order(order_id, book, positions, orders, fills),
+        OrderType::Market => handle_market_order(order_id, book, positions, orders, fills, balance_tx),
+        OrderType::Limit => handle_limit_order(order_id, book, positions, orders, fills, balance_tx),
     }
 }
 
@@ -88,6 +88,7 @@ fn handle_limit_order(
     positions: &mut HashMap<String, Position>,
     orders: &mut HashMap<String, Order>,
     fills: &mut HashMap<String, Vec<Fill>>,
+    balance_tx: &Sender<BalanceRequest>,
 ) -> Result<CreateOrderResponse, EngineError> {
     let (
         incoming_ord_price,
@@ -118,7 +119,7 @@ fn handle_limit_order(
             };
 
             if incoming_remaining_qty != incmoing_ord_size {
-                check_positions(positions, fills, incoming_ord_id.clone(), orders);
+                check_positions(positions, fills, incoming_ord_id.clone(), orders, balance_tx);
             }
             //Add the order in the book;
             let resting_order: RestingOrder = RestingOrder {
@@ -156,7 +157,7 @@ fn handle_limit_order(
 
             if incoming_remaining_qty != incmoing_ord_size {
                 println!("Checking Positions");
-                check_positions(positions, fills, incoming_ord_id.clone(), orders);
+                check_positions(positions, fills, incoming_ord_id.clone(), orders, balance_tx);
             }
             //Add the order in the book;
             let resting_order: RestingOrder = RestingOrder {
@@ -194,6 +195,7 @@ fn handle_market_order(
     positions: &mut HashMap<String, Position>,
     orders: &mut HashMap<String, Order>,
     fills: &mut HashMap<String, Vec<Fill>>,
+    balance_tx: &Sender<BalanceRequest>,
 ) -> Result<CreateOrderResponse, EngineError> {
     let (incoming_qty, incoming_side, incoming_leverage, incoming_user_id, incoming_price) =
         match orders.get(&order_id) {
@@ -233,7 +235,7 @@ fn handle_market_order(
                 }
             };
             //Sort the book prices first;
-            check_positions(positions, fills, incoming_order_id, orders);
+            check_positions(positions, fills, incoming_order_id, orders, balance_tx);
 
             let status: OrderStatus;
             if incoming_remaining_qty == incoming_qty {
@@ -259,7 +261,7 @@ fn handle_market_order(
                 };
     
                 //Sort the book prices first;
-                check_positions(positions, fills, incoming_order_id, orders);
+                check_positions(positions, fills, incoming_order_id, orders, balance_tx);
 
                 let status: OrderStatus;
                 if incoming_remaining_qty == incoming_qty {

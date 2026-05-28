@@ -50,7 +50,7 @@ pub struct Position {
     pub margin: u64,
     pub size: i64,
     pub liquidation_price: u64,
-    pub realized_pnl: Option<u64>,
+    pub realized_pnl: Option<i64>,
     pub time: String,
     pub leverage: u64,
 }
