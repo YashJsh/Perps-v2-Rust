@@ -1,6 +1,9 @@
 use std::collections::{HashMap, VecDeque};
 
-use crate::engine::{helper::get_time, types::{EngineError, Fill, Order, OrderBook, RestingOrder}};
+use crate::engine::{
+    helper::get_time,
+    types::{EngineError, Fill, Order, OrderBook, OrderStatus, RestingOrder},
+};
 
 pub fn core_buy_logic(
     incoming_qty: u64,
@@ -26,7 +29,7 @@ pub fn core_buy_logic(
         let price = *entry.key();
         let asks: &mut VecDeque<RestingOrder> = entry.get_mut();
 
-        if (price <= incoming_price) {
+        if price <= incoming_price {
             while let Some(front) = asks.front_mut() {
                 let selling_order = front;
 
@@ -43,7 +46,7 @@ pub fn core_buy_logic(
                         price: selling_order.price,
                         qty: matched_qty,
                         symbol: selling_order.symbol.clone(),
-                        consumed : false,
+                        consumed: false,
                         time: get_time(),
                     });
 
@@ -57,14 +60,24 @@ pub fn core_buy_logic(
                         price: selling_order.price,
                         qty: matched_qty,
                         symbol: selling_order.symbol.clone(),
-                        consumed : false,
+                        consumed: false,
                         time: get_time(),
                     });
+
+                //This is resting order update;
+                selling_order.remaining_qty -= matched_qty;
+                incoming_remaining_qty -= matched_qty;
 
                 let buy_order = match orders.get_mut(&order_id) {
                     Some(ord) => {
                         ord.filled_qty += matched_qty;
                         ord.remaining_qty -= matched_qty;
+                        if ord.remaining_qty < ord.size {
+                            ord.status = OrderStatus::PartiallyFilled;
+                        }
+                        if ord.remaining_qty == 0 {
+                            ord.status = OrderStatus::Filled;
+                        }
                     }
                     None => return Err(EngineError::OrderNotFound),
                 };
@@ -73,12 +86,15 @@ pub fn core_buy_logic(
                     Some(ord) => {
                         ord.filled_qty += matched_qty;
                         ord.remaining_qty -= matched_qty;
+                        if ord.remaining_qty < ord.size {
+                            ord.status = OrderStatus::PartiallyFilled;
+                        }
+                        if ord.remaining_qty == 0 {
+                            ord.status = OrderStatus::Filled;
+                        }
                     }
                     None => return Err(EngineError::OrderNotFound),
                 };
-
-                selling_order.remaining_qty -= matched_qty;
-                incoming_remaining_qty -= matched_qty;
 
                 if selling_order.remaining_qty == 0 {
                     asks.pop_front();
@@ -92,7 +108,7 @@ pub fn core_buy_logic(
             break;
         }
 
-        if (asks.is_empty()) {
+        if asks.is_empty() {
             book.asks.remove(&price);
         }
     }
@@ -127,8 +143,7 @@ pub fn core_sell_logic(
             while let Some(front) = bids.front_mut() {
                 let buying_order = front;
 
-                let matched_qty =
-                    std::cmp::min(incoming_remaining_qty, buying_order.remaining_qty);
+                let matched_qty = std::cmp::min(incoming_remaining_qty, buying_order.remaining_qty);
 
                 let buyer_fills = fills
                     .entry(incoming_order_id.clone())
@@ -140,7 +155,7 @@ pub fn core_sell_logic(
                         price: buying_order.price,
                         qty: matched_qty,
                         symbol: buying_order.symbol.clone(),
-                        consumed : false,
+                        consumed: false,
                         time: get_time(),
                     });
 
@@ -154,14 +169,23 @@ pub fn core_sell_logic(
                         price: buying_order.price,
                         qty: matched_qty,
                         symbol: buying_order.symbol.clone(),
-                        consumed : false,
+                        consumed: false,
                         time: get_time(),
                     });
 
-                let buy_order = match orders.get_mut(&order_id) {
+                buying_order.remaining_qty -= matched_qty;
+                incoming_remaining_qty -= matched_qty;
+
+                let sell_order = match orders.get_mut(&order_id) {
                     Some(ord) => {
                         ord.filled_qty += matched_qty;
                         ord.remaining_qty -= matched_qty;
+                        if ord.remaining_qty < ord.size {
+                            ord.status = OrderStatus::PartiallyFilled
+                        }
+                        if ord.remaining_qty == 0 {
+                            ord.status = OrderStatus::Filled
+                        }
                     }
                     None => return Err(EngineError::OrderNotFound),
                 };
@@ -170,12 +194,15 @@ pub fn core_sell_logic(
                     Some(ord) => {
                         ord.filled_qty += matched_qty;
                         ord.remaining_qty -= matched_qty;
+                        if ord.remaining_qty < ord.size {
+                            ord.status = OrderStatus::PartiallyFilled
+                        }
+                        if ord.remaining_qty == 0 {
+                            ord.status = OrderStatus::Filled
+                        }
                     }
                     None => return Err(EngineError::OrderNotFound),
                 };
-
-                buying_order.remaining_qty -= matched_qty;
-                incoming_remaining_qty -= matched_qty;
 
                 if buying_order.remaining_qty == 0 {
                     bids.pop_front();

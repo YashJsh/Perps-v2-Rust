@@ -7,26 +7,21 @@ use actix_web::{
     HttpResponse, Responder,
     web::{self},
 };
-use uuid::Uuid;
-
 pub async fn sign_up(body: web::Json<AuthData>, data: web::Data<AppState>) -> impl Responder {
     let user = body.0;
-    //Check if user already exists;
-    //How to get this data.
     let mut users = data.users.lock().unwrap();
 
-    match users.get(&user.username) {
+    match users.get(&user.user_id) {
         Some(_) => {
             return HttpResponse::BadRequest().json("User already exists");
         }
         None => {
-            let id = Uuid::new_v4().to_string();
             let new_user = User {
-                id: id.clone(),
-                username: user.username,
+                id: user.user_id.clone(),
+                username: user.user_id.clone(),
                 password: user.password,
             };
-            users.insert(id, new_user);
+            users.insert(user.user_id.clone(), new_user);
             return HttpResponse::Created().json("User created succcessfully");
         }
     }
@@ -36,7 +31,7 @@ pub async fn sign_in(body: web::Json<AuthData>, data: web::Data<AppState>) -> im
     let user = body.0;
     let users = data.users.try_lock().unwrap();
     println!("Users are : {:?}", users);
-    match users.get(&user.username) {
+    match users.get(&user.user_id) {
         Some(u) => {
             if u.password.eq(&user.password) {
                 return HttpResponse::Ok().json(LogInResponse {

@@ -7,7 +7,7 @@ use crate::engine::types::{BalanceResponse, EngineError, OrderSide, OrderType};
 
 #[derive(Serialize, Deserialize)]
 pub struct AuthData {
-    pub username: String,
+    pub user_id: String,
     pub password: String,
 }
 

@@ -1,14 +1,16 @@
-
-use std::collections::{HashMap};
+use std::collections::HashMap;
 use tokio::sync::{mpsc::Sender, oneshot};
 use uuid::Uuid;
 
 use crate::{
     engine::{
-        core_matching::{core_buy_logic, core_sell_logic}, helper::{add_in_bids, add_in_sorts, check_required_margin, get_time, risk_engine}, position::check_positions, types::{
+        core_matching::{core_buy_logic, core_sell_logic},
+        helper::{add_in_bids, add_in_sorts, check_required_margin, get_time, risk_engine},
+        position::check_positions,
+        types::{
             CreateOrderResponse, EngineError, Fill, Order, OrderBook, OrderSide, OrderStatus,
             OrderType, Position, RestingOrder,
-        }
+        },
     },
     types::types::{BalanceRequest, IncomingOrder},
 };
@@ -22,6 +24,7 @@ pub fn create_order(
     balance_tx: &Sender<BalanceRequest>,
 ) -> Result<CreateOrderResponse, EngineError> {
     let (tx, rx) = oneshot::channel();
+    let (tx2, rx2) = oneshot::channel();
     let order_id = Uuid::new_v4().to_string();
 
     let incmoing_order_signed_size = match &data.order_side {
@@ -54,6 +57,16 @@ pub fn create_order(
         if user_balance.balance < required_margin {
             return Err(EngineError::NotEnoughBalance);
         }
+
+        //Lock the margin
+        let _ = balance_tx.blocking_send(BalanceRequest::LockMargin {
+            user_id: data.user_id.clone(),
+            amount: required_margin,
+            response_tx: tx2,
+        });
+        let _ = rx2
+            .blocking_recv()
+            .map(|d| d.map(|r| println!("Margin Locked Successfully {:?}", r)));
     }
 
     let order_type = data.order_type.clone();
@@ -76,8 +89,12 @@ pub fn create_order(
     println!("Order inserted in orders with order_id : {}", order_id);
 
     match order_type {
-        OrderType::Market => handle_market_order(order_id, book, positions, orders, fills, balance_tx),
-        OrderType::Limit => handle_limit_order(order_id, book, positions, orders, fills, balance_tx),
+        OrderType::Market => {
+            handle_market_order(order_id, book, positions, orders, fills, balance_tx)
+        }
+        OrderType::Limit => {
+            handle_limit_order(order_id, book, positions, orders, fills, balance_tx)
+        }
     }
 }
 
@@ -111,15 +128,26 @@ fn handle_limit_order(
     let incoming_ord_id = order_id.clone();
     match incoming_ord_side {
         OrderSide::Buy => {
-            let incoming_remaining_qty = match core_buy_logic(incmoing_ord_size, incoming_ord_price, book, orders, fills, order_id){
+            let incoming_remaining_qty = match core_buy_logic(
+                incmoing_ord_size,
+                incoming_ord_price,
+                book,
+                orders,
+                fills,
+                order_id,
+            ) {
                 Ok(e) => e,
-                Err(err) => {
-                    return Err(err)
-                }
+                Err(err) => return Err(err),
             };
 
             if incoming_remaining_qty != incmoing_ord_size {
-                check_positions(positions, fills, incoming_ord_id.clone(), orders, balance_tx);
+                check_positions(
+                    positions,
+                    fills,
+                    incoming_ord_id.clone(),
+                    orders,
+                    balance_tx,
+                );
             }
             //Add the order in the book;
             let resting_order: RestingOrder = RestingOrder {
@@ -130,7 +158,9 @@ fn handle_limit_order(
                 remaining_qty: incoming_remaining_qty,
                 symbol: incoming_ord_symbol,
             };
-            add_in_bids(book, resting_order);
+            if resting_order.remaining_qty != 0 {
+                add_in_bids(book, resting_order);
+            }
             let status: OrderStatus;
             if incoming_remaining_qty == incmoing_ord_size {
                 status = OrderStatus::Open
@@ -148,16 +178,27 @@ fn handle_limit_order(
         }
 
         OrderSide::Sell => {
-            let incoming_remaining_qty = match core_sell_logic(incmoing_ord_size, incoming_ord_price, book, orders, fills, order_id){
+            let incoming_remaining_qty = match core_sell_logic(
+                incmoing_ord_size,
+                incoming_ord_price,
+                book,
+                orders,
+                fills,
+                order_id,
+            ) {
                 Ok(e) => e,
-                Err(err) => {
-                    return Err(err)
-                }
+                Err(err) => return Err(err),
             };
 
             if incoming_remaining_qty != incmoing_ord_size {
                 println!("Checking Positions");
-                check_positions(positions, fills, incoming_ord_id.clone(), orders, balance_tx);
+                check_positions(
+                    positions,
+                    fills,
+                    incoming_ord_id.clone(),
+                    orders,
+                    balance_tx,
+                );
             }
             //Add the order in the book;
             let resting_order: RestingOrder = RestingOrder {
@@ -168,8 +209,9 @@ fn handle_limit_order(
                 remaining_qty: incoming_remaining_qty,
                 symbol: incoming_ord_symbol,
             };
-
-            add_in_sorts(book, resting_order);
+            if resting_order.remaining_qty != 0 {
+                add_in_sorts(book, resting_order);
+            }
             let status: OrderStatus;
             if incoming_remaining_qty == incmoing_ord_size {
                 status = OrderStatus::Open
@@ -187,7 +229,6 @@ fn handle_limit_order(
         }
     }
 }
-
 
 fn handle_market_order(
     order_id: String,
@@ -228,12 +269,11 @@ fn handle_market_order(
 
     match incoming_side {
         OrderSide::Buy => {
-            let incoming_remaining_qty = match core_buy_logic(incoming_qty, incoming_price, book, orders, fills, order_id){
-                Ok(d)=> d,
-                Err(e)=> {
-                    return Err(e)
-                }
-            };
+            let incoming_remaining_qty =
+                match core_buy_logic(incoming_qty, incoming_price, book, orders, fills, order_id) {
+                    Ok(d) => d,
+                    Err(e) => return Err(e),
+                };
             //Sort the book prices first;
             check_positions(positions, fills, incoming_order_id, orders, balance_tx);
 
@@ -255,11 +295,18 @@ fn handle_market_order(
 
         OrderSide::Sell => {
             {
-                let incoming_remaining_qty = match  core_sell_logic(incoming_qty, incoming_price, book, orders, fills, order_id){
-                    Ok(d)=>d,
-                    Err(e)=> return Err(e)
+                let incoming_remaining_qty = match core_sell_logic(
+                    incoming_qty,
+                    incoming_price,
+                    book,
+                    orders,
+                    fills,
+                    order_id,
+                ) {
+                    Ok(d) => d,
+                    Err(e) => return Err(e),
                 };
-    
+
                 //Sort the book prices first;
                 check_positions(positions, fills, incoming_order_id, orders, balance_tx);
 
@@ -281,5 +328,3 @@ fn handle_market_order(
         }
     }
 }
-
-

@@ -38,23 +38,23 @@ pub fn delete_order_func(
                 response_tx: tx,
             });
             let data = rx.blocking_recv();
-            match data{
-                Ok(d)=>{
-                    match d {
-                        Ok(_)=> {
-                            println!("Balance restored successfully");
-                        },
-                        Err(e)=>{
-                            return Err(e)
-                        }
+            match data {
+                Ok(d) => match d {
+                    Ok(_) => {
+                        println!("Balance restored successfully");
                     }
+                    Err(e) => return Err(e),
                 },
-                Err(e) => {
+                Err(_) => {
                     return Err(EngineError::BalanceThreadDead);
                 }
             };
         }
         _ => return Err(EngineError::OrderFilledAlready),
+    }
+    let id = order_id.clone();
+    if let Some(ord) = orders.get_mut(&order_id) {
+        ord.status = OrderStatus::Cancelled;
     }
 
     let orders_vec = match order_side {
@@ -64,22 +64,16 @@ pub fn delete_order_func(
 
     match orders_vec.get_mut(&price) {
         Some(order) => {
-            for i in 0..order.len() {
-                if order[i].order_id == order_id {
-                    //Remove from the queue;
-                    order.remove(i);
-                }
+            if let Some(pos) = order.iter().position(|p| p.order_id == order_id) {
+                order.remove(pos)
+            } else {
+                return Err(EngineError::OrderNotFound);
             }
         }
         None => {
             return Err(EngineError::OrderNotFound);
         }
     };
-
-    let id = order_id.clone();
-    if let Some(ord) = orders.get_mut(&order_id) {
-        ord.status = OrderStatus::Cancelled;
-    }
 
     Ok(DeleteOrderRes {
         success: true,

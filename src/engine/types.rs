@@ -17,7 +17,7 @@ pub enum OrderSide {
     Sell,
 }
 
-#[derive(serde::Serialize, Deserialize, Clone)]
+#[derive(serde::Serialize, Deserialize, Clone, Debug)]
 pub enum OrderStatus {
     Filled,
     PartiallyFilled,
@@ -35,10 +35,10 @@ pub struct Order {
     pub price: u64,
     pub leverage: u64,
     pub status: OrderStatus,
-    pub slippage : u64,
-    pub remaining_qty : u64,
-    pub filled_qty : u64,
-    pub created_at : String
+    pub slippage: u64,
+    pub remaining_qty: u64,
+    pub filled_qty: u64,
+    pub created_at: String,
 }
 
 #[derive(Clone)]
@@ -63,7 +63,7 @@ pub struct Fill {
     pub price: u64,
     pub qty: u64,
     pub symbol: String,
-    pub consumed : bool,
+    pub consumed: bool,
     pub time: String,
 }
 
@@ -94,51 +94,51 @@ pub enum EngineRequest {
     CheckBalance(BalanceUpdateData),
     DeleteOrderData {
         data: DeleteOrderData,
-        response_tx: Sender<Result<DeleteOrderRes,EngineError>>,
+        response_tx: Sender<Result<DeleteOrderRes, EngineError>>,
     },
-    GetDepth{
-        symbol : String,
-        response_tx : Sender<Result<DepthResponse, EngineError>>
+    GetDepth {
+        symbol: String,
+        response_tx: Sender<Result<DepthResponse, EngineError>>,
     },
-    UpdateBalance{
-        user_id : String,
-        amount : u64,
-        response_tx :  Sender<Result<BalanceResponse, EngineError>>
-    }
+    UpdateBalance {
+        user_id: String,
+        amount: u64,
+        response_tx: Sender<Result<BalanceResponse, EngineError>>,
+    },
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, Debug)]
 pub struct DeleteOrderRes {
-    pub success : bool,
+    pub success: bool,
     pub order_status: OrderStatus,
-    pub data : String,
-    pub order_id : String
+    pub data: String,
+    pub order_id: String,
 }
 
-#[derive(serde::Serialize)]
-pub struct CreateOrderResponse{
-    pub success : bool,
-    pub filled_qty : u64,
-    pub remaining_qty : u64,
-    pub order_status : OrderStatus
+#[derive(serde::Serialize, Debug)]
+pub struct CreateOrderResponse {
+    pub success: bool,
+    pub filled_qty: u64,
+    pub remaining_qty: u64,
+    pub order_status: OrderStatus,
 }
 
-#[derive(serde::Serialize)]
-pub struct DepthResponse{
-    pub success : bool,
-    pub bids : HashMap<u64, u64>,
-    pub asks : HashMap<u64, u64>
+#[derive(serde::Serialize, Debug)]
+pub struct DepthResponse {
+    pub success: bool,
+    pub bids: HashMap<u64, u64>,
+    pub asks: HashMap<u64, u64>,
 }
 
-#[derive(serde::Serialize)]
-pub struct BalanceResponse{
-    pub user_id : String,
-    pub balance : u64,
-    pub locked : u64
+#[derive(serde::Serialize, Debug)]
+pub struct BalanceResponse {
+    pub user_id: String,
+    pub balance: u64,
+    pub locked: u64,
 }
 
-#[derive(Serialize)]
-pub enum EngineError{
+#[derive(Debug, Serialize)]
+pub enum EngineError {
     InvalidPrice,
     InsufficientBalance,
     OrderNotFound,
@@ -148,5 +148,6 @@ pub enum EngineError{
     InvalidSymbol,
     UserNotFound,
     BalanceThreadDead,
-    NotEnoughBalance
+    NotEnoughBalance,
 }
+
