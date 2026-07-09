@@ -4,12 +4,12 @@ use tokio::sync::{mpsc::Sender, oneshot};
 
 use crate::{
     engine::types::{DeleteOrderRes, EngineError, Order, OrderBook, OrderSide, OrderStatus},
-    types::types::{BalanceRequest, DeleteOrderData},
+    types::{BalanceRequest, DeleteOrderData},
 };
 
 pub fn delete_order_func(
     data: DeleteOrderData,
-    orders: &mut HashMap<String, Order>,
+    orders: &mut HashMap<u64, Order>,
     order_book: &mut OrderBook,
     btc_balance_tx: &Sender<BalanceRequest>,
 ) -> Result<DeleteOrderRes, EngineError> {
@@ -52,7 +52,7 @@ pub fn delete_order_func(
         }
         _ => return Err(EngineError::OrderFilledAlready),
     }
-    let id = order_id.clone();
+    let id = order_id;
     if let Some(ord) = orders.get_mut(&order_id) {
         ord.status = OrderStatus::Cancelled;
     }

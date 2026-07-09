@@ -4,9 +4,9 @@ use chrono::Local;
 
 use crate::engine::types::{OrderBook, Position, RestingOrder};
 
-pub fn risk_engine(positions: &HashMap<String, Position>, order_size: i64, user_id: &String) -> bool {
-    let mut output = false;
-    match positions.get(user_id) {
+pub fn risk_engine(positions: &HashMap<u64, Position>, order_size: i64, user_id: u64) -> bool {
+    let mut output;
+    match positions.get(&user_id) {
         Some(pos) => {
             let risk = order_size + pos.size;
             if risk.abs() < pos.size.abs() {

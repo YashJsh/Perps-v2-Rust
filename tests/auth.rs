@@ -1,7 +1,7 @@
 use actix_web::{App, body::to_bytes, http::StatusCode, test, web};
 use perps_v1::{
     controllers::auth::{sign_in, sign_up},
-    store::store::AppState,
+    store::AppState,
     utils::user::User,
 };
 use serde_json::{Value, json};
@@ -29,7 +29,7 @@ async fn signup_returns_created_for_new_user() {
     let request = test::TestRequest::post()
         .uri("/signup")
         .set_json(json!({
-            "user_id": "alice",
+            "user_id": 1,
             "password": "password123"
         }))
         .to_request();
@@ -55,7 +55,7 @@ async fn signup_rejects_duplicate_user_ids() {
     let first_request = test::TestRequest::post()
         .uri("/signup")
         .set_json(json!({
-            "user_id": "alice",
+            "user_id": 1,
             "password": "password123"
         }))
         .to_request();
@@ -65,7 +65,7 @@ async fn signup_rejects_duplicate_user_ids() {
     let second_request = test::TestRequest::post()
         .uri("/signup")
         .set_json(json!({
-            "user_id": "alice",
+            "user_id": 1,
             "password": "different-password"
         }))
         .to_request();
@@ -86,9 +86,9 @@ async fn signin_returns_token_for_valid_credentials() {
 
     let app_state = test_app_state();
     app_state.users.lock().unwrap().insert(
-        "alice".to_string(),
+        1,
         User {
-            id: "alice".to_string(),
+            id: 1,
             username: "alice".to_string(),
             password: "password123".to_string(),
         },
@@ -104,7 +104,7 @@ async fn signin_returns_token_for_valid_credentials() {
     let request = test::TestRequest::post()
         .uri("/signin")
         .set_json(json!({
-            "user_id": "alice",
+            "user_id": 1,
             "password": "password123"
         }))
         .to_request();
@@ -116,7 +116,7 @@ async fn signin_returns_token_for_valid_credentials() {
 
     assert_eq!(status, StatusCode::OK);
     assert_eq!(payload["success"], true);
-    assert_eq!(payload["user_id"].as_str().unwrap().is_empty(), false);
+    assert_eq!(payload["user_id"], 1);
     assert_eq!(payload["token"].as_str().unwrap().is_empty(), false);
 }
 
@@ -124,9 +124,9 @@ async fn signin_returns_token_for_valid_credentials() {
 async fn signin_rejects_incorrect_password() {
     let app_state = test_app_state();
     app_state.users.lock().unwrap().insert(
-        "alice".to_string(),
+        1,
         User {
-            id: "alice".to_string(),
+            id: 1,
             username: "alice".to_string(),
             password: "password123".to_string(),
         },
@@ -142,7 +142,7 @@ async fn signin_rejects_incorrect_password() {
     let request = test::TestRequest::post()
         .uri("/signin")
         .set_json(json!({
-            "user_id": "alice",
+            "user_id": 1,
             "password": "wrong-password"
         }))
         .to_request();
@@ -168,7 +168,7 @@ async fn signin_returns_not_found_for_unknown_user() {
     let request = test::TestRequest::post()
         .uri("/signin")
         .set_json(json!({
-            "user_id": "missing-user",
+            "user_id": 99,
             "password": "password123"
         }))
         .to_request();

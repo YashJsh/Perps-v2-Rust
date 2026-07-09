@@ -6,8 +6,8 @@ use perps_v1::{
         auth::{sign_in, sign_up},
         exchange::{create_order, delete_order, get_depth, on_ramp},
     },
-    engine::engine::run_engine,
-    store::store::AppState, websocket::connection::connect_stream,
+    engine::{engine::run_engine, types::EngineRequest},
+    store::AppState, websocket::connection::connect_stream,
 };
 
 use tokio::sync::mpsc;
@@ -15,7 +15,7 @@ use tokio::sync::mpsc;
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     dotenv::dotenv().ok();
-    let (tx, mut rx) = mpsc::channel(100);
+    let (tx, rx) = mpsc::channel::<EngineRequest>(100);
     let tx1 = tx.clone();
 
     connect_stream(tx1);

@@ -6,7 +6,7 @@ use perps_v1::{
         create_order::create_order,
         types::{EngineError, Fill, Order, OrderBook, OrderSide, OrderStatus, Position},
     },
-    types::types::{BalanceRequest, Balances, IncomingOrder},
+    types::{BalanceRequest, Balances, IncomingOrder},
 };
 use std::{
     collections::{BTreeMap, HashMap},
@@ -15,16 +15,16 @@ use std::{
 use tokio::sync::mpsc;
 
 fn seed_balances(
-    seeded: impl IntoIterator<Item = (&'static str, u64)>,
-) -> HashMap<String, Balances> {
+    seeded: impl IntoIterator<Item = (u64, u64)>,
+) -> HashMap<u64, Balances> {
     let mut balances = HashMap::new();
     for (user_id, amount) in seeded {
         balances.insert(
-            user_id.to_string(),
+            user_id,
             Balances {
                 available: amount,
                 locked: 0,
-                user_id: user_id.to_string(),
+                user_id,
             },
         );
     }
@@ -32,7 +32,7 @@ fn seed_balances(
 }
 
 fn spawn_balance_actor(
-    seeded: impl IntoIterator<Item = (&'static str, u64)>,
+    seeded: impl IntoIterator<Item = (u64, u64)>,
 ) -> (mpsc::Sender<BalanceRequest>, thread::JoinHandle<()>) {
     let (tx, mut rx) = mpsc::channel::<BalanceRequest>(32);
     let mut balances = seed_balances(seeded);
@@ -82,10 +82,10 @@ fn spawn_balance_actor(
 }
 
 fn empty_engine_state() -> (
-    HashMap<String, Order>,
+    HashMap<u64, Order>,
     OrderBook,
-    HashMap<String, Position>,
-    HashMap<String, Vec<Fill>>,
+    HashMap<u64, Position>,
+    HashMap<u64, Vec<Fill>>,
 ) {
     (
         HashMap::new(),
@@ -99,13 +99,13 @@ fn empty_engine_state() -> (
 }
 
 fn limit_order(
-    user_id: &str,
+    user_id: u64,
     side: OrderSide,
     price: u64,
     size: u64,
 ) -> IncomingOrder {
     IncomingOrder {
-        user_id: user_id.to_string(),
+        user_id,
         order_type: perps_v1::engine::types::OrderType::Limit,
         order_side: side,
         symbol: "BTC".to_string(),
@@ -128,10 +128,10 @@ fn order_status_is(status: &OrderStatus, expected: OrderStatus) -> bool {
 
 fn create_order_or_panic(
     order: IncomingOrder,
-    orders: &mut HashMap<String, Order>,
+    orders: &mut HashMap<u64, Order>,
     book: &mut OrderBook,
-    positions: &mut HashMap<String, Position>,
-    fills: &mut HashMap<String, Vec<Fill>>,
+    positions: &mut HashMap<u64, Position>,
+    fills: &mut HashMap<u64, Vec<Fill>>,
     balance_tx: &mpsc::Sender<BalanceRequest>,
     context: &str,
 ) -> perps_v1::engine::types::CreateOrderResponse {
@@ -141,21 +141,21 @@ fn create_order_or_panic(
     }
 }
 
-fn order_id_for_user(orders: &HashMap<String, Order>, user_id: &str) -> String {
+fn order_id_for_user(orders: &HashMap<u64, Order>, user_id: u64) -> u64 {
     orders
         .iter()
         .find(|(_, order)| order.user_id == user_id)
-        .map(|(order_id, _)| order_id.clone())
+        .map(|(order_id, _)| *order_id)
         .expect("expected order for user")
 }
 
 #[test]
 fn limit_order_with_no_match_sits_in_book() {
-    let (balance_tx, balance_thread) = spawn_balance_actor([("buyer-1", 10_000)]);
+    let (balance_tx, balance_thread) = spawn_balance_actor([(1, 10_000)]);
     let (mut orders, mut book, mut positions, mut fills) = empty_engine_state();
 
     let response = create_order_or_panic(
-        limit_order("buyer-1", OrderSide::Buy, 100, 2),
+        limit_order(1, OrderSide::Buy, 100, 2),
         &mut orders,
         &mut book,
         &mut positions,
@@ -186,11 +186,11 @@ fn limit_order_with_no_match_sits_in_book() {
 #[test]
 fn incoming_limit_buy_matches_resting_sell_order() {
     let (balance_tx, balance_thread) =
-        spawn_balance_actor([("seller-1", 10_000), ("buyer-1", 10_000)]);
+        spawn_balance_actor([(2, 10_000), (1, 10_000)]);
     let (mut orders, mut book, mut positions, mut fills) = empty_engine_state();
 
     let resting_response = create_order_or_panic(
-        limit_order("seller-1", OrderSide::Sell, 100, 3),
+        limit_order(2, OrderSide::Sell, 100, 3),
         &mut orders,
         &mut book,
         &mut positions,
@@ -201,10 +201,10 @@ fn incoming_limit_buy_matches_resting_sell_order() {
     ;
 
     assert!(order_status_is(&resting_response.order_status, OrderStatus::Open));
-    let resting_order_id = orders.keys().next().unwrap().clone();
+    let resting_order_id = *orders.keys().next().unwrap();
 
     let response = create_order_or_panic(
-        limit_order("buyer-1", OrderSide::Buy, 100, 3),
+        limit_order(1, OrderSide::Buy, 100, 3),
         &mut orders,
         &mut book,
         &mut positions,
@@ -238,11 +238,11 @@ fn incoming_limit_buy_matches_resting_sell_order() {
 #[test]
 fn incoming_limit_sell_should_remove_fully_matched_resting_bid() {
     let (balance_tx, balance_thread) =
-        spawn_balance_actor([("buyer-1", 10_000), ("seller-1", 10_000)]);
+        spawn_balance_actor([(1, 10_000), (2, 10_000)]);
     let (mut orders, mut book, mut positions, mut fills) = empty_engine_state();
 
     let resting_response = create_order_or_panic(
-        limit_order("buyer-1", OrderSide::Buy, 100, 4),
+        limit_order(1, OrderSide::Buy, 100, 4),
         &mut orders,
         &mut book,
         &mut positions,
@@ -255,7 +255,7 @@ fn incoming_limit_sell_should_remove_fully_matched_resting_bid() {
     assert!(order_status_is(&resting_response.order_status, OrderStatus::Open));
 
     let response = create_order_or_panic(
-        limit_order("seller-1", OrderSide::Sell, 100, 4),
+        limit_order(2, OrderSide::Sell, 100, 4),
         &mut orders,
         &mut book,
         &mut positions,
@@ -281,11 +281,11 @@ fn incoming_limit_sell_should_remove_fully_matched_resting_bid() {
 #[test]
 fn incoming_limit_buy_partial_fill_keeps_remaining_qty_in_book() {
     let (balance_tx, balance_thread) =
-        spawn_balance_actor([("seller-1", 10_000), ("buyer-1", 10_000)]);
+        spawn_balance_actor([(2, 10_000), (1, 10_000)]);
     let (mut orders, mut book, mut positions, mut fills) = empty_engine_state();
 
     create_order_or_panic(
-        limit_order("seller-1", OrderSide::Sell, 100, 2),
+        limit_order(2, OrderSide::Sell, 100, 2),
         &mut orders,
         &mut book,
         &mut positions,
@@ -293,10 +293,10 @@ fn incoming_limit_buy_partial_fill_keeps_remaining_qty_in_book() {
         &balance_tx,
         "resting sell should be accepted",
     );
-    let seller_order_id = order_id_for_user(&orders, "seller-1");
+    let seller_order_id = order_id_for_user(&orders, 2);
 
     let response = create_order_or_panic(
-        limit_order("buyer-1", OrderSide::Buy, 100, 5),
+        limit_order(1, OrderSide::Buy, 100, 5),
         &mut orders,
         &mut book,
         &mut positions,
@@ -330,11 +330,11 @@ fn incoming_limit_buy_partial_fill_keeps_remaining_qty_in_book() {
 
 #[test]
 fn create_order_rejects_when_margin_is_not_enough() {
-    let (balance_tx, balance_thread) = spawn_balance_actor([("buyer-1", 20)]);
+    let (balance_tx, balance_thread) = spawn_balance_actor([(1, 20)]);
     let (mut orders, mut book, mut positions, mut fills) = empty_engine_state();
 
     let result = create_order(
-        limit_order("buyer-1", OrderSide::Buy, 100, 5),
+        limit_order(1, OrderSide::Buy, 100, 5),
         &mut orders,
         &mut book,
         &mut positions,
@@ -356,11 +356,11 @@ fn create_order_rejects_when_margin_is_not_enough() {
 #[test]
 fn first_match_creates_a_new_position_for_the_taker() {
     let (balance_tx, balance_thread) =
-        spawn_balance_actor([("seller-1", 10_000), ("buyer-1", 10_000)]);
+        spawn_balance_actor([(2, 10_000), (1, 10_000)]);
     let (mut orders, mut book, mut positions, mut fills) = empty_engine_state();
 
     create_order_or_panic(
-        limit_order("seller-1", OrderSide::Sell, 100, 3),
+        limit_order(2, OrderSide::Sell, 100, 3),
         &mut orders,
         &mut book,
         &mut positions,
@@ -370,7 +370,7 @@ fn first_match_creates_a_new_position_for_the_taker() {
     );
 
     create_order_or_panic(
-        limit_order("buyer-1", OrderSide::Buy, 100, 3),
+        limit_order(1, OrderSide::Buy, 100, 3),
         &mut orders,
         &mut book,
         &mut positions,
@@ -379,7 +379,7 @@ fn first_match_creates_a_new_position_for_the_taker() {
         "incoming buy should create a position",
     );
 
-    let buyer_position = positions.get("buyer-1").expect("buyer position should exist");
+    let buyer_position = positions.get(&1).expect("buyer position should exist");
     assert_eq!(buyer_position.size, 3);
     assert_eq!(buyer_position.average_entry_price, 100);
     assert_eq!(buyer_position.margin, 30);
@@ -392,14 +392,14 @@ fn first_match_creates_a_new_position_for_the_taker() {
 #[test]
 fn matching_same_side_again_increases_existing_position() {
     let (balance_tx, balance_thread) = spawn_balance_actor([
-        ("seller-1", 10_000),
-        ("seller-2", 10_000),
-        ("buyer-1", 10_000),
+        (2, 10_000),
+        (3, 10_000),
+        (1, 10_000),
     ]);
     let (mut orders, mut book, mut positions, mut fills) = empty_engine_state();
 
     create_order_or_panic(
-        limit_order("seller-1", OrderSide::Sell, 100, 3),
+        limit_order(2, OrderSide::Sell, 100, 3),
         &mut orders,
         &mut book,
         &mut positions,
@@ -408,7 +408,7 @@ fn matching_same_side_again_increases_existing_position() {
         "first resting sell should be accepted",
     );
     create_order_or_panic(
-        limit_order("buyer-1", OrderSide::Buy, 100, 3),
+        limit_order(1, OrderSide::Buy, 100, 3),
         &mut orders,
         &mut book,
         &mut positions,
@@ -418,7 +418,7 @@ fn matching_same_side_again_increases_existing_position() {
     );
 
     create_order_or_panic(
-        limit_order("seller-2", OrderSide::Sell, 120, 2),
+        limit_order(3, OrderSide::Sell, 120, 2),
         &mut orders,
         &mut book,
         &mut positions,
@@ -427,7 +427,7 @@ fn matching_same_side_again_increases_existing_position() {
         "second resting sell should be accepted",
     );
     create_order_or_panic(
-        limit_order("buyer-1", OrderSide::Buy, 120, 2),
+        limit_order(1, OrderSide::Buy, 120, 2),
         &mut orders,
         &mut book,
         &mut positions,
@@ -436,7 +436,7 @@ fn matching_same_side_again_increases_existing_position() {
         "second buy should extend the position",
     );
 
-    let buyer_position = positions.get("buyer-1").expect("buyer position should exist");
+    let buyer_position = positions.get(&1).expect("buyer position should exist");
     assert_eq!(buyer_position.size, 5);
     assert_eq!(buyer_position.average_entry_price, 108);
     assert_eq!(buyer_position.margin, 54);
@@ -449,14 +449,14 @@ fn matching_same_side_again_increases_existing_position() {
 #[test]
 fn opposite_side_match_reduces_existing_position() {
     let (balance_tx, balance_thread) = spawn_balance_actor([
-        ("seller-1", 10_000),
-        ("buyer-1", 10_000),
-        ("buyer-2", 10_000),
+        (2, 10_000),
+        (1, 10_000),
+        (4, 10_000),
     ]);
     let (mut orders, mut book, mut positions, mut fills) = empty_engine_state();
 
     create_order_or_panic(
-        limit_order("seller-1", OrderSide::Sell, 100, 5),
+        limit_order(2, OrderSide::Sell, 100, 5),
         &mut orders,
         &mut book,
         &mut positions,
@@ -465,7 +465,7 @@ fn opposite_side_match_reduces_existing_position() {
         "resting sell should be accepted",
     );
     create_order_or_panic(
-        limit_order("buyer-1", OrderSide::Buy, 100, 5),
+        limit_order(1, OrderSide::Buy, 100, 5),
         &mut orders,
         &mut book,
         &mut positions,
@@ -475,7 +475,7 @@ fn opposite_side_match_reduces_existing_position() {
     );
 
     create_order_or_panic(
-        limit_order("buyer-2", OrderSide::Buy, 100, 2),
+        limit_order(4, OrderSide::Buy, 100, 2),
         &mut orders,
         &mut book,
         &mut positions,
@@ -484,7 +484,7 @@ fn opposite_side_match_reduces_existing_position() {
         "resting bid should be accepted",
     );
     create_order_or_panic(
-        limit_order("buyer-1", OrderSide::Sell, 100, 2),
+        limit_order(1, OrderSide::Sell, 100, 2),
         &mut orders,
         &mut book,
         &mut positions,
@@ -494,7 +494,7 @@ fn opposite_side_match_reduces_existing_position() {
     );
 
     let buyer_position = positions
-        .get("buyer-1")
+        .get(&1)
         .expect("buyer should still have a reduced long position");
     assert_eq!(buyer_position.size, 3);
     assert_eq!(buyer_position.average_entry_price, 100);

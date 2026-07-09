@@ -9,14 +9,14 @@ pub fn core_buy_logic(
     incoming_qty: u64,
     incoming_price: u64,
     book: &mut OrderBook,
-    orders: &mut HashMap<String, Order>,
-    fills: &mut HashMap<String, Vec<Fill>>,
-    order_id: String,
+    orders: &mut HashMap<u64, Order>,
+    fills: &mut HashMap<u64, Vec<Fill>>,
+    order_id: u64,
 ) -> Result<u64, EngineError> {
-    let incoming_order_id = order_id.clone();
+    let incoming_order_id = order_id;
     let mut incoming_remaining_qty = incoming_qty;
     {
-        fills.entry(order_id.clone()).or_insert(Vec::new());
+        fills.entry(order_id).or_insert(Vec::new());
     }
 
     while incoming_remaining_qty > 0 {
@@ -36,13 +36,13 @@ pub fn core_buy_logic(
                 let matched_qty =
                     std::cmp::min(incoming_remaining_qty, selling_order.remaining_qty);
 
-                let buyer_fills = fills
-                    .entry(incoming_order_id.clone())
+                let _buyer_fills = fills
+                    .entry(incoming_order_id)
                     .or_insert(Vec::new())
                     .push(Fill {
-                        order_id: incoming_order_id.clone(),
-                        maker_id: selling_order.order_id.clone(),
-                        taker_id: incoming_order_id.clone(),
+                        order_id: incoming_order_id,
+                        maker_id: selling_order.order_id,
+                        taker_id: incoming_order_id,
                         price: selling_order.price,
                         qty: matched_qty,
                         symbol: selling_order.symbol.clone(),
@@ -50,13 +50,13 @@ pub fn core_buy_logic(
                         time: get_time(),
                     });
 
-                let seller_fills = fills
-                    .entry(selling_order.order_id.clone())
+                let _seller_fills = fills
+                    .entry(selling_order.order_id)
                     .or_insert(Vec::new())
                     .push(Fill {
-                        order_id: selling_order.order_id.clone(),
-                        maker_id: selling_order.order_id.clone(),
-                        taker_id: incoming_order_id.clone(),
+                        order_id: selling_order.order_id,
+                        maker_id: selling_order.order_id,
+                        taker_id: incoming_order_id,
                         price: selling_order.price,
                         qty: matched_qty,
                         symbol: selling_order.symbol.clone(),
@@ -68,7 +68,7 @@ pub fn core_buy_logic(
                 selling_order.remaining_qty -= matched_qty;
                 incoming_remaining_qty -= matched_qty;
 
-                let buy_order = match orders.get_mut(&order_id) {
+                let _buy_order = match orders.get_mut(&order_id) {
                     Some(ord) => {
                         ord.filled_qty += matched_qty;
                         ord.remaining_qty -= matched_qty;
@@ -82,7 +82,7 @@ pub fn core_buy_logic(
                     None => return Err(EngineError::OrderNotFound),
                 };
 
-                let sell_order = match orders.get_mut(&selling_order.order_id) {
+                let _sell_order = match orders.get_mut(&selling_order.order_id) {
                     Some(ord) => {
                         ord.filled_qty += matched_qty;
                         ord.remaining_qty -= matched_qty;
@@ -119,14 +119,14 @@ pub fn core_sell_logic(
     incoming_qty: u64,
     incoming_price: u64,
     book: &mut OrderBook,
-    orders: &mut HashMap<String, Order>,
-    fills: &mut HashMap<String, Vec<Fill>>,
-    order_id: String,
+    orders: &mut HashMap<u64, Order>,
+    fills: &mut HashMap<u64, Vec<Fill>>,
+    order_id: u64,
 ) -> Result<u64, EngineError> {
-    let incoming_order_id = order_id.clone();
+    let incoming_order_id = order_id;
     let mut incoming_remaining_qty = incoming_qty;
     {
-        fills.entry(order_id.clone()).or_insert(Vec::new());
+        fills.entry(order_id).or_insert(Vec::new());
     }
 
     while incoming_remaining_qty > 0 {
@@ -145,13 +145,13 @@ pub fn core_sell_logic(
 
                 let matched_qty = std::cmp::min(incoming_remaining_qty, buying_order.remaining_qty);
 
-                let buyer_fills = fills
-                    .entry(incoming_order_id.clone())
+                let _buyer_fills = fills
+                    .entry(incoming_order_id)
                     .or_insert(Vec::new())
                     .push(Fill {
-                        order_id: incoming_order_id.clone(),
-                        maker_id: buying_order.order_id.clone(),
-                        taker_id: incoming_order_id.clone(),
+                        order_id: incoming_order_id,
+                        maker_id: buying_order.order_id,
+                        taker_id: incoming_order_id,
                         price: buying_order.price,
                         qty: matched_qty,
                         symbol: buying_order.symbol.clone(),
@@ -159,13 +159,13 @@ pub fn core_sell_logic(
                         time: get_time(),
                     });
 
-                let seller_fills = fills
-                    .entry(buying_order.order_id.clone())
+                let _seller_fills = fills
+                    .entry(buying_order.order_id)
                     .or_insert(Vec::new())
                     .push(Fill {
-                        order_id: buying_order.order_id.clone(),
-                        maker_id: buying_order.order_id.clone(),
-                        taker_id: incoming_order_id.clone(),
+                        order_id: buying_order.order_id,
+                        maker_id: buying_order.order_id,
+                        taker_id: incoming_order_id,
                         price: buying_order.price,
                         qty: matched_qty,
                         symbol: buying_order.symbol.clone(),
@@ -176,7 +176,7 @@ pub fn core_sell_logic(
                 buying_order.remaining_qty -= matched_qty;
                 incoming_remaining_qty -= matched_qty;
 
-                let sell_order = match orders.get_mut(&order_id) {
+                let _sell_order = match orders.get_mut(&order_id) {
                     Some(ord) => {
                         ord.filled_qty += matched_qty;
                         ord.remaining_qty -= matched_qty;
@@ -190,7 +190,7 @@ pub fn core_sell_logic(
                     None => return Err(EngineError::OrderNotFound),
                 };
 
-                let sell_order = match orders.get_mut(&buying_order.order_id) {
+                let _sell_order = match orders.get_mut(&buying_order.order_id) {
                     Some(ord) => {
                         ord.filled_qty += matched_qty;
                         ord.remaining_qty -= matched_qty;
@@ -216,7 +216,7 @@ pub fn core_sell_logic(
             break;
         }
 
-        if (bids.is_empty()) {
+        if bids.is_empty()  {
             book.bids.remove(&price);
         }
     }

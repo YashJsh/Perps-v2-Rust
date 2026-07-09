@@ -6,14 +6,14 @@ use crate::{
         create_order::create_order,
         types::{Fill, Order, OrderBook, OrderSide, OrderType, Position},
     },
-    types::types::{BalanceRequest, IncomingOrder},
+    types::{BalanceRequest, IncomingOrder},
 };
 
 pub fn liquidation(
     index_price: u64,
-    positions: &mut HashMap<String, Position>,
-    orders: &mut HashMap<String, Order>,
-    fills: &mut HashMap<String, Vec<Fill>>,
+    positions: &mut HashMap<u64, Position>,
+    orders: &mut HashMap<u64, Order>,
+    fills: &mut HashMap<u64, Vec<Fill>>,
     book: &mut OrderBook,
     market_price: u64,
     balance_tx: &Sender<BalanceRequest>,
@@ -33,7 +33,7 @@ pub fn liquidation(
                 OrderSide::Sell => new_side = OrderSide::Buy,
             }
             liquid_orders.push(IncomingOrder {
-                user_id: user_id.clone(),
+                user_id: *user_id,
                 leverage: position.leverage,
                 order_side: new_side,
                 order_type: OrderType::Market,
