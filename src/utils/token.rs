@@ -5,23 +5,22 @@ use std::{
 
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use jwt::Claims;
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
+use serde::{ Serialize};
 
 #[derive(Serialize)]
 pub struct Data {
-    userId: String,
+    user_id: u64,
     sub: usize,
 }
 
-pub fn create_token(user_id: String) -> String {
+pub fn create_token(user_id: u64) -> String {
     let key = env::var("JWT_SECRET").expect("JWT secret missing");
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs();
     let data = Data {
-        userId: user_id,
+        user_id : user_id,
         sub: (now + 3600) as usize,
     };
     let token = encode(

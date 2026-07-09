@@ -15,11 +15,11 @@ pub async fn sign_up(body: web::Json<AuthData>, data: web::Data<AppState>) -> im
         }
         None => {
             let new_user = User {
-                id: user.user_id.clone(),
-                username: user.user_id.clone(),
+                id: user.user_id,
+                username: user.user_id.to_string(),
                 password: user.password,
             };
-            users.insert(user.user_id.clone(), new_user);
+            users.insert(user.user_id, new_user);
             return HttpResponse::Created().json("User created succcessfully");
         }
     }
@@ -34,8 +34,8 @@ pub async fn sign_in(body: web::Json<AuthData>, data: web::Data<AppState>) -> im
             if u.password.eq(&user.password) {
                 return HttpResponse::Ok().json(LogInResponse {
                     success: true,
-                    token: create_token(u.id.clone()),
-                    user_id: u.id.clone(),
+                    token: create_token(u.id),
+                    user_id: u.id,
                 });
             } else {
                 return HttpResponse::Unauthorized().json("Incorrect Password");

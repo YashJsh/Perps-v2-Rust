@@ -15,7 +15,7 @@ use tokio::sync::mpsc;
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     dotenv::dotenv().ok();
-    let (tx, mut rx) = mpsc::channel::<EngineRequest>(100);
+    let (tx, rx) = mpsc::channel::<EngineRequest>(100);
     let tx1 = tx.clone();
 
     connect_stream(tx1);

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::{mpsc::Sender, oneshot};
-use uuid::Uuid;
 
 use crate::{
     engine::{
@@ -15,17 +15,19 @@ use crate::{
     types::{BalanceRequest, IncomingOrder},
 };
 
+static NEXT_ORDER_ID: AtomicU64 = AtomicU64::new(1);
+
 pub fn create_order(
     data: IncomingOrder,
-    orders: &mut HashMap<String, Order>,
+    orders: &mut HashMap<u64, Order>,
     book: &mut OrderBook,
-    positions: &mut HashMap<String, Position>,
-    fills: &mut HashMap<String, Vec<Fill>>,
+    positions: &mut HashMap<u64, Position>,
+    fills: &mut HashMap<u64, Vec<Fill>>,
     balance_tx: &Sender<BalanceRequest>,
 ) -> Result<CreateOrderResponse, EngineError> {
     let (tx, rx) = oneshot::channel();
     let (tx2, rx2) = oneshot::channel();
-    let order_id = Uuid::new_v4().to_string();
+    let order_id = NEXT_ORDER_ID.fetch_add(1, Ordering::Relaxed);
 
     let incmoing_order_signed_size = match &data.order_side {
         OrderSide::Buy => data.size as i64,
@@ -36,12 +38,12 @@ pub fn create_order(
     let check = risk_engine(
         &positions,
         incmoing_order_signed_size,
-        &data.user_id.clone(),
+        data.user_id,
     );
 
     if check {
         let _ = balance_tx.blocking_send(BalanceRequest::GetBalance {
-            user_id: data.user_id.clone(),
+            user_id: data.user_id,
             response_tx: tx,
         });
         let balance = rx.blocking_recv();
@@ -60,7 +62,7 @@ pub fn create_order(
 
         //Lock the margin
         let _ = balance_tx.blocking_send(BalanceRequest::LockMargin {
-            user_id: data.user_id.clone(),
+            user_id: data.user_id,
             amount: required_margin,
             response_tx: tx2,
         });
@@ -72,7 +74,7 @@ pub fn create_order(
     let order_type = data.order_type.clone();
     let new_order = Order {
         user_id: data.user_id,
-        order_id: order_id.to_string(),
+        order_id,
         order_type: data.order_type,
         order_side: data.order_side,
         symbol: data.symbol,
@@ -85,7 +87,7 @@ pub fn create_order(
         remaining_qty: data.size,
         created_at: get_time(),
     };
-    orders.insert(order_id.clone(), new_order);
+    orders.insert(order_id, new_order);
     println!("Order inserted in orders with order_id : {}", order_id);
 
     match order_type {
@@ -100,11 +102,11 @@ pub fn create_order(
 
 //What are the things i need to do for limit order;
 fn handle_limit_order(
-    order_id: String,
+    order_id: u64,
     book: &mut OrderBook,
-    positions: &mut HashMap<String, Position>,
-    orders: &mut HashMap<String, Order>,
-    fills: &mut HashMap<String, Vec<Fill>>,
+    positions: &mut HashMap<u64, Position>,
+    orders: &mut HashMap<u64, Order>,
+    fills: &mut HashMap<u64, Vec<Fill>>,
     balance_tx: &Sender<BalanceRequest>,
 ) -> Result<CreateOrderResponse, EngineError> {
     let (
@@ -119,13 +121,13 @@ fn handle_limit_order(
             ord.size,
             ord.symbol.clone(),
             ord.order_side.clone(),
-            ord.user_id.clone(),
+            ord.user_id,
         ),
         None => {
             return Err(EngineError::OrderNotFound);
         }
     };
-    let incoming_ord_id = order_id.clone();
+    let incoming_ord_id = order_id;
     match incoming_ord_side {
         OrderSide::Buy => {
             let incoming_remaining_qty = match core_buy_logic(
@@ -144,7 +146,7 @@ fn handle_limit_order(
                 check_positions(
                     positions,
                     fills,
-                    incoming_ord_id.clone(),
+                    incoming_ord_id,
                     orders,
                     balance_tx,
                 );
@@ -195,7 +197,7 @@ fn handle_limit_order(
                 check_positions(
                     positions,
                     fills,
-                    incoming_ord_id.clone(),
+                    incoming_ord_id,
                     orders,
                     balance_tx,
                 );
@@ -231,20 +233,20 @@ fn handle_limit_order(
 }
 
 fn handle_market_order(
-    order_id: String,
+    order_id: u64,
     book: &mut OrderBook,
-    positions: &mut HashMap<String, Position>,
-    orders: &mut HashMap<String, Order>,
-    fills: &mut HashMap<String, Vec<Fill>>,
+    positions: &mut HashMap<u64, Position>,
+    orders: &mut HashMap<u64, Order>,
+    fills: &mut HashMap<u64, Vec<Fill>>,
     balance_tx: &Sender<BalanceRequest>,
 ) -> Result<CreateOrderResponse, EngineError> {
-    let (incoming_qty, incoming_side, incoming_leverage, incoming_user_id, incoming_price) =
+    let (incoming_qty, incoming_side, _incoming_leverage, incoming_user_id, incoming_price) =
         match orders.get(&order_id) {
             Some(ord) => (
                 ord.size,
                 ord.order_side.clone(),
                 ord.leverage,
-                ord.user_id.clone(),
+                ord.user_id,
                 ord.price,
             ),
             None => {
@@ -253,14 +255,14 @@ fn handle_market_order(
             }
         };
 
-    let incoming_order_id = order_id.clone();
+    let incoming_order_id = order_id;
 
     let incoming_order_signed_size = match &incoming_side {
         OrderSide::Buy => incoming_qty as i64,
         OrderSide::Sell => -(incoming_qty as i64),
     };
 
-    let check = risk_engine(positions, incoming_order_signed_size, &incoming_user_id);
+    let check = risk_engine(positions, incoming_order_signed_size, incoming_user_id);
 
     //Sort the book first;
     if check {

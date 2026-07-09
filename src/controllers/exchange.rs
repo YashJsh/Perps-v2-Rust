@@ -1,4 +1,4 @@
-use actix_web::{App, HttpResponse, Responder, web};
+use actix_web::{HttpResponse, Responder, web};
 use tokio::sync::oneshot;
 
 use crate::{

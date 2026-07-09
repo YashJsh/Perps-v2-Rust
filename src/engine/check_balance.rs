@@ -1,14 +1,14 @@
 use std::{collections::HashMap};
-use tokio::sync::mpsc::{ Receiver, Sender};
+use tokio::sync::mpsc::Receiver;
 
 use crate::{
-    engine::types::{BalanceResponse, EngineError, EngineRequest},
+    engine::types::{BalanceResponse, EngineError},
     types::{BalanceRequest, Balances},
 };
 
 
 pub async fn balance_actor(mut balance_rx: Receiver<BalanceRequest>) {
-    let mut balances: HashMap<String, Balances> = HashMap::new();
+    let mut balances: HashMap<u64, Balances> = HashMap::new();
 
     while let Some(req) = balance_rx.recv().await {
         match req {
@@ -91,27 +91,26 @@ pub async fn balance_actor(mut balance_rx: Receiver<BalanceRequest>) {
 }
 
 pub fn handle_add_balance(
-    user_id: String,
+    user_id: u64,
     amount: u64,
-    balances: &mut HashMap<String, Balances>,
+    balances: &mut HashMap<u64, Balances>,
 ) -> Result<BalanceResponse, EngineError> {
-    let user_ids = user_id.clone();
     let user = balances.entry(user_id).or_insert(Balances {
         available: 0,
         locked: 0,
-        user_id: user_ids.clone(),
+        user_id,
     });
     user.available += amount;
     Ok(BalanceResponse {
-        user_id: user_ids,
+        user_id,
         balance: user.available,
         locked: user.locked,
     })
 }
 
 pub fn handle_get_balance(
-    user_id: String,
-    balances: &mut HashMap<String, Balances>,
+    user_id: u64,
+    balances: &mut HashMap<u64, Balances>,
 ) -> Result<BalanceResponse, EngineError> {
     match balances.get(&user_id) {
         Some(b) => {
@@ -126,8 +125,8 @@ pub fn handle_get_balance(
 }
 
 pub fn lock_margin(
-    user_id: String,
-    balances: &mut HashMap<String, Balances>,
+    user_id: u64,
+    balances: &mut HashMap<u64, Balances>,
     amount: u64,
 ) -> Result<BalanceResponse, EngineError> {
     match balances.get_mut(&user_id) {
@@ -145,8 +144,8 @@ pub fn lock_margin(
 }
 
 pub fn release_margin(
-    user_id: String,
-    balances: &mut HashMap<String, Balances>,
+    user_id: u64,
+    balances: &mut HashMap<u64, Balances>,
     amount: u64,
 ) -> Result<BalanceResponse, EngineError> {
     match balances.get_mut(&user_id) {
@@ -164,8 +163,8 @@ pub fn release_margin(
 }
 
 pub fn reduce_balance(
-    user_id: String,
-    balances: &mut HashMap<String, Balances>,
+    user_id: u64,
+    balances: &mut HashMap<u64, Balances>,
     amount: u64,
 ) -> Result<BalanceResponse, EngineError> {
     match balances.get_mut(&user_id) {

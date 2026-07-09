@@ -11,10 +11,10 @@ use crate::{
 };
 
 pub fn check_positions(
-    positions: &mut HashMap<String, Position>,
-    fills: &mut HashMap<String, Vec<Fill>>,
-    order_id: String,
-    orders: &mut HashMap<String, Order>,
+    positions: &mut HashMap<u64, Position>,
+    fills: &mut HashMap<u64, Vec<Fill>>,
+    order_id: u64,
+    orders: &mut HashMap<u64, Order>,
     balance_tx: &Sender<BalanceRequest>,
 ) {
     let (tx, rx) = oneshot::channel();
@@ -34,7 +34,7 @@ pub fn check_positions(
             return;
         }
     };
-    let user_id_clone = order.user_id.clone();
+    let user_id = order.user_id;
     let order_size;
     match &order.order_side {
         OrderSide::Buy => order_size = order.size as i64,
@@ -100,7 +100,7 @@ pub fn check_positions(
 
         let average_exit_price = notional_value / total_qty;
         //Calculate pnl
-        let pnl = match position_side {
+        let _pnl = match position_side {
             OrderSide::Buy => {
                 (average_exit_price as i64 - position.average_entry_price as i64)
                     * closed_qty as i64
@@ -129,17 +129,17 @@ pub fn check_positions(
             //Add it to wallet balance;
             if pnl > 0 {
                 let _ = balance_tx.send(BalanceRequest::AddBalance {
-                    user_id: user_id_clone.clone(),
+                    user_id,
                     amount: pnl as u64,
                     response_tx: tx,
                 });
                 let res = rx.blocking_recv();
                 match res {
                     Ok(d) => match d {
-                        Ok(r) => {
+                        Ok(_r) => {
                             println!("Balance added successfully");
                         }
-                        Err(e) => {
+                        Err(_e) => {
                             println!("Error");
                         }
                     },
@@ -149,38 +149,38 @@ pub fn check_positions(
                 }
 
                 let _ = balance_tx.send(BalanceRequest::ReleaseMargin {
-                    user_id: user_id_clone.clone(),
+                    user_id,
                     amount: position.margin,
                     response_tx: tx2,
                 });
                 let res = rx2.blocking_recv();
                 match res {
                     Ok(d) => match d {
-                        Ok(b) => {
+                        Ok(_b) => {
                             println!("Margin released");
                         }
-                        Err(e) => {
+                        Err(_e) => {
                             println!("Error");
                         }
                     },
-                    Err(e) => {
+                    Err(_e) => {
                         println!("Error in balance thread");
                     }
                 }
-                positions.remove(&user_id_clone);
+                positions.remove(&user_id);
             } else {
                 let _ = balance_tx.send(BalanceRequest::ReduceBalance {
-                    user_id: user_id_clone,
+                    user_id,
                     amount: pnl as u64,
                     response_tx: tx,
                 });
                 let res = rx.blocking_recv();
                 match res {
                     Ok(d) => match d {
-                        Ok(r) => {
+                        Ok(_r) => {
                             println!("Balance removed successfully");
                         }
-                        Err(e) => {
+                        Err(_e) => {
                             println!("Error");
                         }
                     },
@@ -192,8 +192,9 @@ pub fn check_positions(
         } else if new_position.signum() == position.size.signum() {
         
             let new_position_size = position.size + signed_total_qty;
-            let pnl = match position_side {
-                OrderSide::Buy => {
+            //PNL
+            let _ = match position_side {
+               OrderSide::Buy => {
                     (average_exit_price as i64 - position.average_entry_price as i64)
                         * closed_qty as i64
                 }
@@ -228,17 +229,17 @@ pub fn check_positions(
             //Hard case
             // Here i need to flip the position.
             let _ = balance_tx.blocking_send(BalanceRequest::ReleaseMargin {
-                user_id: user_id_clone.clone(),
+                user_id,
                 amount: position.margin,
                 response_tx: tx,
             });
             let res = rx.blocking_recv();
             match res {
                 Ok(d) => match d {
-                    Ok(r) => {
+                    Ok(_) => {
                         println!("Margin removed successfully");
                     }
-                    Err(e) => {
+                    Err(_) => {
                         println!("Error");
                     }
                 },
@@ -255,14 +256,14 @@ pub fn check_positions(
             };
             position.margin = position.average_entry_price * position.size.abs() as u64 / order.leverage;
             position.time = get_time();
-            let _ = balance_tx.blocking_send(BalanceRequest::LockMargin { user_id: user_id_clone.clone(), amount: position.margin, response_tx: tx2 });
+            let _ = balance_tx.blocking_send(BalanceRequest::LockMargin { user_id, amount: position.margin, response_tx: tx2 });
             let res = rx2.blocking_recv();
             match res {
                 Ok(d) => match d {
-                    Ok(r) => {
+                    Ok(_) => {
                         println!("New Margin Added Successfully");
                     }
-                    Err(e) => {
+                    Err(_) => {
                         println!("Error");
                     }
                 },
@@ -275,7 +276,7 @@ pub fn check_positions(
 }
 
 fn create_fresh_position(
-    positions: &mut HashMap<String, Position>,
+    positions: &mut HashMap<u64, Position>,
     order_fills: &mut Vec<Fill>,
     order: &Order,
 ) {
@@ -304,9 +305,9 @@ fn create_fresh_position(
     };
 
     positions.insert(
-        order.user_id.clone(),
+        order.user_id,
         Position {
-            order_id: order.order_id.clone(),
+            order_id: order.order_id,
             average_entry_price,
             symbol: order.symbol.clone(),
             margin,
@@ -318,4 +319,3 @@ fn create_fresh_position(
         },
     );
 }
-

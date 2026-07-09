@@ -19,6 +19,6 @@ pub enum DataTypes {
 }
 
 pub struct AppState {
-    pub users: Mutex<HashMap<String, User>>,
+    pub users: Mutex<HashMap<u64, User>>,
     pub sender: Sender<EngineRequest>,
 }

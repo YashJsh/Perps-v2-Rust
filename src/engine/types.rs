@@ -26,8 +26,8 @@ pub enum OrderStatus {
 }
 
 pub struct Order {
-    pub user_id: String,
-    pub order_id: String,
+    pub user_id: u64,
+    pub order_id: u64,
     pub order_type: OrderType,
     pub order_side: OrderSide,
     pub symbol: String,
@@ -43,8 +43,8 @@ pub struct Order {
 
 #[derive(Clone)]
 pub struct Position {
-    // pub user_id : String,
-    pub order_id: String,
+    // pub user_id : u64,
+    pub order_id: u64,
     pub average_entry_price: u64, //average of all entry prices.
     pub symbol: String,
     pub margin: u64,
@@ -57,9 +57,9 @@ pub struct Position {
 
 #[derive(Clone)]
 pub struct Fill {
-    pub order_id: String,
-    pub maker_id: String,
-    pub taker_id: String,
+    pub order_id: u64,
+    pub maker_id: u64,
+    pub taker_id: u64,
     pub price: u64,
     pub qty: u64,
     pub symbol: String,
@@ -69,8 +69,8 @@ pub struct Fill {
 
 #[derive(Debug)]
 pub struct RestingOrder {
-    pub order_id: String,
-    pub user_id: String,
+    pub order_id: u64,
+    pub user_id: u64,
     pub qty: u64,
     pub price: u64,
     pub remaining_qty: u64,
@@ -101,7 +101,7 @@ pub enum EngineRequest {
         response_tx: Sender<Result<DepthResponse, EngineError>>,
     },
     UpdateBalance {
-        user_id: String,
+        user_id: u64,
         amount: u64,
         response_tx: Sender<Result<BalanceResponse, EngineError>>,
     },
@@ -137,7 +137,7 @@ pub struct DeleteOrderRes {
     pub success: bool,
     pub order_status: OrderStatus,
     pub data: String,
-    pub order_id: String,
+    pub order_id: u64,
 }
 
 #[derive(serde::Serialize, Debug)]
@@ -157,7 +157,7 @@ pub struct DepthResponse {
 
 #[derive(serde::Serialize, Debug)]
 pub struct BalanceResponse {
-    pub user_id: String,
+    pub user_id: u64,
     pub balance: u64,
     pub locked: u64,
 }

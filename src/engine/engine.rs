@@ -1,3 +1,4 @@
+use std::collections::{BTreeMap, HashMap};
 use tokio::sync::{
     mpsc::{self, Receiver},
 };
@@ -13,8 +14,6 @@ use crate::{
     },
     types::BalanceRequest,
 };
-
-use std::collections::{BTreeMap, HashMap};
 
 pub async fn run_engine(mut rx: Receiver<EngineRequest>) {
     //BTC Thread
@@ -61,10 +60,10 @@ pub async fn run_engine(mut rx: Receiver<EngineRequest>) {
             bids: BTreeMap::new(),
             asks: BTreeMap::new(),
         };
-        let mut orders: HashMap<String, Order> = HashMap::new();
-        let mut positions: HashMap<String, Position> = HashMap::new();
-        let mut fills: HashMap<String, Vec<Fill>> = HashMap::new();
-        let mut current_index_price: u64 = 0;
+        let mut orders: HashMap<u64, Order> = HashMap::new();
+        let mut positions: HashMap<u64, Position> = HashMap::new();
+        let mut fills: HashMap<u64, Vec<Fill>> = HashMap::new();
+        let mut current_index_price: u64;
 
         while let Some(data) = btc_rx.blocking_recv() {
             match data {
