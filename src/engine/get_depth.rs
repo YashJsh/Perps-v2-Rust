@@ -38,3 +38,4 @@ pub fn get_depth(book: &OrderBook) -> DepthResponse {
         asks : asks_hash
     }
 }
+

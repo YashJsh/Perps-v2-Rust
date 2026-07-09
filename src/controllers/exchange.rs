@@ -3,8 +3,8 @@ use tokio::sync::oneshot;
 
 use crate::{
     engine::types::{BalanceResponse, CreateOrderResponse, DepthResponse, EngineError, EngineRequest},
-    store::store::AppState,
-    types::types::{DeleteOrderData, GetDepth, IncomingOrder, OnRamp},
+    store::AppState,
+    types::{DeleteOrderData, GetDepth, IncomingOrder, OnRamp},
 };
 
 pub async fn on_ramp(body: web::Json<OnRamp>, data: web::Data<AppState>) -> impl Responder {

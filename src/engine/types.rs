@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap, VecDeque};
 use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot::Sender;
 
-use crate::types::types::{BalanceUpdateData, DeleteOrderData, IncomingOrder, MarkPriceData};
+use crate::types::{BalanceUpdateData, DeleteOrderData, IncomingOrder, MarkPriceData};
 
 #[derive(serde::Serialize, Deserialize, Clone)]
 pub enum OrderType {
@@ -105,6 +105,31 @@ pub enum EngineRequest {
         amount: u64,
         response_tx: Sender<Result<BalanceResponse, EngineError>>,
     },
+}
+
+impl EngineRequest{
+    pub fn symbol(&self)-> Option<&str>{
+        match self{
+            Self::UpdateBalance {..} => {
+                None
+            }
+            Self::CreateOrder { order, .. } => {
+                Some(&order.symbol)
+            }
+            Self::MarkPriceUpdate { data } => {
+                Some(&data.symbol)
+            }
+            Self::DeleteOrderData { data, ..} => {
+                Some(&data.symbol)
+            }
+            Self::GetDepth { symbol, .. } => {
+                Some(symbol.as_str())
+            }
+            Self::CheckBalance(..)=>{
+                None
+            }
+        }
+    }
 }
 
 #[derive(serde::Serialize, Debug)]

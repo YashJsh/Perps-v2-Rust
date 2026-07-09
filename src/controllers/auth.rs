@@ -1,7 +1,5 @@
 use crate::{
-    store::store::AppState,
-    types::types::{AuthData, LogInResponse},
-    utils::{token::create_token, user::User},
+    store::AppState, types::{AuthData, LogInResponse}, utils::{token::create_token, user::User},
 };
 use actix_web::{
     HttpResponse, Responder,

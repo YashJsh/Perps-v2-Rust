@@ -1,5 +1,5 @@
 use crate::{
-    engine::types::EngineRequest, types::types::MarkPriceData,
+    engine::types::EngineRequest, types::MarkPriceData,
 };
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};

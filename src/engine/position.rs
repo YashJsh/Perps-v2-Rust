@@ -7,7 +7,7 @@ use crate::{
         helper::get_time,
         types::{Fill, Order, OrderSide, Position},
     },
-    types::types::BalanceRequest,
+    types::BalanceRequest,
 };
 
 pub fn check_positions(

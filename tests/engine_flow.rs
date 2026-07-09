@@ -6,7 +6,7 @@ use perps_v1::{
         create_order::create_order,
         types::{EngineError, Fill, Order, OrderBook, OrderSide, OrderStatus, Position},
     },
-    types::types::{BalanceRequest, Balances, IncomingOrder},
+    types::{BalanceRequest, Balances, IncomingOrder},
 };
 use std::{
     collections::{BTreeMap, HashMap},

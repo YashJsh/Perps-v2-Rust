@@ -12,7 +12,7 @@ use crate::{
             OrderType, Position, RestingOrder,
         },
     },
-    types::types::{BalanceRequest, IncomingOrder},
+    types::{BalanceRequest, IncomingOrder},
 };
 
 pub fn create_order(

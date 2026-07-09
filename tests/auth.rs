@@ -1,7 +1,7 @@
 use actix_web::{App, body::to_bytes, http::StatusCode, test, web};
 use perps_v1::{
     controllers::auth::{sign_in, sign_up},
-    store::store::AppState,
+    store::AppState,
     utils::user::User,
 };
 use serde_json::{Value, json};

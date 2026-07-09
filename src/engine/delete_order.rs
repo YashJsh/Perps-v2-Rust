@@ -4,7 +4,7 @@ use tokio::sync::{mpsc::Sender, oneshot};
 
 use crate::{
     engine::types::{DeleteOrderRes, EngineError, Order, OrderBook, OrderSide, OrderStatus},
-    types::types::{BalanceRequest, DeleteOrderData},
+    types::{BalanceRequest, DeleteOrderData},
 };
 
 pub fn delete_order_func(

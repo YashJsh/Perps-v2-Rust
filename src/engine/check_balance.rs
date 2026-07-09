@@ -1,10 +1,11 @@
-use std::collections::HashMap;
-use tokio::sync::mpsc::Receiver;
+use std::{collections::HashMap};
+use tokio::sync::mpsc::{ Receiver, Sender};
 
 use crate::{
-    engine::types::{BalanceResponse, EngineError},
-    types::types::{BalanceRequest, Balances},
+    engine::types::{BalanceResponse, EngineError, EngineRequest},
+    types::{BalanceRequest, Balances},
 };
+
 
 pub async fn balance_actor(mut balance_rx: Receiver<BalanceRequest>) {
     let mut balances: HashMap<String, Balances> = HashMap::new();
@@ -179,4 +180,3 @@ pub fn reduce_balance(
         None => return Err(EngineError::UserNotFound),
     }
 }
-

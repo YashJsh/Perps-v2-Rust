@@ -6,7 +6,7 @@ use crate::{
         create_order::create_order,
         types::{Fill, Order, OrderBook, OrderSide, OrderType, Position},
     },
-    types::types::{BalanceRequest, IncomingOrder},
+    types::{BalanceRequest, IncomingOrder},
 };
 
 pub fn liquidation(

@@ -19,7 +19,7 @@ use perps_v1::{
             RestingOrder,
         },
     },
-    types::types::{BalanceRequest, Balances, DeleteOrderData, IncomingOrder},
+    types::{BalanceRequest, Balances, DeleteOrderData, IncomingOrder},
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────
